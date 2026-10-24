@@ -1,5 +1,8 @@
 # tab-to-components
 
+[![npm version](https://img.shields.io/npm/v/tab-to-components.svg)](https://www.npmjs.com/package/tab-to-components)
+[![CI](https://github.com/r48n34/tab-to-components/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/r48n34/tab-to-components/actions/workflows/ci.yml)
+
 **Alt+click any React element in your dev server and jump straight to the JSX that rendered it.**
 
 A dev-only Vite plugin for the modern React stack: **React 19**, **Vite 7 & 8**, and **React Router v7 / v8 framework mode** — including streamed SSR, where the other click-to-component tools stopped working.
@@ -11,6 +14,7 @@ Alt + click the "count is 0" button  →
 <Button />   app/routes/home.tsx:20:9     ← opened in your editor
 ```
 
+![Hovering the count button: the overlay outlines it and shows the Button component's source location, src/App.tsx:20:9](https://raw.githubusercontent.com/r48n34/tab-to-components/main/docs/demo-hover.png)
 
 - Zero app-code changes — no `entry.client.tsx` edit, no root route edit, no React runtime patching.
 - Works in `react-router dev` (SSR, streaming, SPA mode) **and** plain Vite.
@@ -76,6 +80,8 @@ Same one-liner as plain Vite — `createBrowserRouter` + `RouterProvider` apps o
 | After opening | A short toast confirms the file that was opened. |
 
 The app's own click handler is **not** triggered (the plugin suppresses it in the capture phase), and no overlay DOM is added except one `<div data-ttc-ui>` shadow root with `pointer-events: none`.
+
+![Alt+right-click opens the component chain picker, listing each marked JSX ancestor and its source file](https://raw.githubusercontent.com/r48n34/tab-to-components/main/docs/demo-menu.png)
 
 ```
 data-ttc        "<project relative path>:<line>:<column>"  (1-based)

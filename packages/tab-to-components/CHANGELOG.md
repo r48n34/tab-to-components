@@ -31,6 +31,7 @@ This project follows [Semantic Versioning](https://semver.org/).
 ### Documentation
 
 - Added a “Dev-only by construction” section to the package README and explained the new production-build gates.
+- Added demo screenshots of the hover overlay and the component-chain picker to both READMEs.
 - Refreshed the test/packaging counts in `PUBLISHING.md` and the README development commands.
 
 ## 0.2.0 - 2026-10-25
