@@ -11,44 +11,33 @@ Alt + click the "count is 0" button  →
 <Button />   app/routes/home.tsx:20:9     ← opened in your editor
 ```
 
+
 - Zero app-code changes — no `entry.client.tsx` edit, no root route edit, no React runtime patching.
 - Works in `react-router dev` (SSR, streaming, SPA mode) **and** plain Vite.
 - **Opens VS Code by default**; `editor: "cursor" | "trae" | "webstorm" | …`, a command template, a launcher function, or `"auto"` for auto-detection.
 - Never ships to production: no markers, no client code, no extra imports in `vite build` / `react-router build`.
 
-### Dev-only by construction
+## Dev-only by construction
 
-The dev-only guarantee is enforced, not just documented:
+`tab-to-components` is a development tool, not a runtime dependency. Its dev-only behaviour is enforced in layers:
 
-- `apply: "serve"` keeps Vite from ever resolving the plugin for `vite build` / `react-router build`.
-- Every hook independently refuses to run for a build command, so a wrapper that strips `apply` still cannot emit markers or the browser runtime.
-- `virtual:tab-to-components/client` only resolves from a running dev server; importing it in a production build fails instead of bundling the overlay.
-- The integration suite and `pnpm verify:package` build real apps and scan the output for dev-only markers.
-
-Install with `-D` and keep it in `vite.config.ts`; never import it from application code.
-
----
-
-## Requirements
-
-| | |
+| Layer | Guarantee |
 | --- | --- |
-| Node.js | **20+** |
-| Vite | **7.x or 8.x** (peer dependency, tested on 7.3.7 and 8.3.5) |
-| React | **18.3+** (React 19 is the primary target) |
-| React Router | v7 / v8 framework mode — optional, plain Vite works too |
-| Editor | **VS Code** (`code`) by default — any IDE can be selected with the `editor` option |
-| Module format | ESM-only package (Vite configs are ESM by default) |
+| `apply: "serve"` | Vite removes the plugin from `vite build` / `react-router build` before any hook runs. |
+| Hook-level command guard | If a wrapper re-registers the plugin without `apply`, `configResolved`, `transform`, `resolveId`, `load` and `configureServer` all stay inert for a build command. No marker, no virtual import and no browser runtime can be emitted. |
+| Virtual module guard | `virtual:tab-to-components/client` only resolves from a running dev server. A production build that imports it fails to resolve instead of bundling the overlay. |
+| Package exports | `dist/client.js` is served by the dev server but is not an importable package subpath. |
+| Regression gates | `pnpm test:dev-only` covers the contract; the integration suite builds plain Vite and React Router 7/8 apps and scans output for `data-ttc`, the virtual module id and the `__TTC_*` globals; `pnpm verify:package` reruns the production-build checks against the exact packed artifact. |
 
----
+Install it with `-D` and keep it in `vite.config.ts`; never import it from application code.
 
 ## Install
 
 ```bash
 pnpm add -D tab-to-components
-# npm i -D tab-to-components
-# yarn add -D tab-to-components
-# bun add -d tab-to-components
+npm i -D tab-to-components
+yarn add -D tab-to-components
+bun add -d tab-to-components
 ```
 
 ---
@@ -66,10 +55,6 @@ import { tabToComponents } from "tab-to-components";
 export default defineConfig({
   plugins: [tabToComponents(), reactRouter()],
 });
-```
-
-```bash
-pnpm dev
 ```
 
 That is the whole setup. The client runtime is injected into client modules by the plugin, so React Router's streamed SSR document needs no edits.
@@ -229,7 +214,7 @@ Verified in the project's test suite against real dev servers, SSR renders, prod
 | React Router | **7.18.4** framework mode on Vite 7.3.7 **and** Vite 8.3.5; **8.5.0** framework mode on Vite 8.3.5 |
 | Vite | **7.3.7** and **8.3.5** |
 | React | **19.3.1** |
-| `@vitejs/plugin-react` | 5.1.4 on Vite 7, 6.1.2 on Vite 8 (both plugin orders) |
+| `@vitejs/plugin-react` | 5.2.0 on Vite 7, 6.1.2 on Vite 8 (both plugin orders) |
 | Editors | **VS Code (`code`) by default**; presets for the VS Code family (incl. **Cursor/Trae**), JetBrains, Zed, Sublime, Vim, Emacs; command templates and custom launcher functions; `editor: "auto"` for Vite's `launch-editor` auto-detection |
 
 Vite 6 is inside the peer range but untested — use Vite 7+ to be safe.
@@ -263,7 +248,7 @@ The plugin annotates server-rendered markup by default so hydration stays consis
 Markers are relative to the Vite `config.root`. Run the plugin in the app's own Vite config, or scope it with `include`. `node_modules` and `/@fs/` paths outside the root are never instrumented.
 
 **Production build?**
-Nothing is injected — the plugin is `apply: "serve"`, and the test suite asserts that builds contain no markers, no runtime and no `__TTC_*` globals.
+Nothing is injected. The plugin is `apply: "serve"`, and every hook independently refuses to run for a build command, so a stripped or wrapped plugin registration still cannot emit markers, the virtual client module or the browser runtime. The integration suite builds plain Vite and React Router 7/8 apps and scans their output, and `pnpm verify:package` repeats the check against the packed npm artifact.
 
 ---
 
@@ -288,7 +273,7 @@ pnpm test:dev-only    # fast subset: dev-only guards, virtual module, editor mid
 pnpm test:integration # Vite 8 dev servers, SSR, production builds, default VS Code + custom editor endpoints
 pnpm test:matrix      # Vite 7 dev servers, SSR, build and plugin orderings
 pnpm e2e              # headless Chrome Alt+click across all 5 playgrounds
-pnpm verify:package   # validates the packed npm artifact, including a production-build leak check
+pnpm verify:package   # validates the packed npm artifact
 ```
 
 Issues and pull requests are welcome.
@@ -297,4 +282,4 @@ Issues and pull requests are welcome.
 
 ## License
 
-MIT
+MIT © tab-to-components contributors
