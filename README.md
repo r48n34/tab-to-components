@@ -285,4 +285,4 @@ Issues and pull requests are welcome.
 
 ## License
 
-MIT © tab-to-components contributors
+MIT
