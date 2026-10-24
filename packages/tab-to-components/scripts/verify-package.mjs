@@ -3,7 +3,8 @@
 // It answers "would `npm publish` produce a usable package?" without spawning
 // child processes (some CI sandboxes block that):
 //   1. validates the metadata npm requires (name, version, license, files, exports);
-//   2. builds the exact file list `files` + npm always-included files produce;
+//   2. builds the exact file list `files` + npm always-included files produce,
+//      rejecting source maps and oversized artifacts;
 //   3. copies that list into a clean consumer project's node_modules;
 //   4. imports the packed copy and checks the public API;
 //   5. type-checks a consumer file against the packed .d.ts;
@@ -148,14 +149,27 @@ function npmFileList() {
   return [...files].sort();
 }
 const publishedFiles = npmFileList();
-check("published set is small (no sources/tests)", publishedFiles.length < 60, `${publishedFiles.length} files`);
+const publishedBytes = publishedFiles.reduce(
+  (sum, file) => sum + fs.statSync(path.join(packageDir, file)).size,
+  0,
+);
+const publishedMaps = publishedFiles.filter((file) => file.endsWith(".map"));
+const clientBytes = fs.existsSync(path.join(packageDir, "dist", "client.js"))
+  ? fs.statSync(path.join(packageDir, "dist", "client.js")).size
+  : 0;
+check("published set is small (no sources/tests/maps)", publishedFiles.length < 32, `${publishedFiles.length} files`);
+check("publishes no source maps", publishedMaps.length === 0, publishedMaps.join(", "));
+check("published payload is small", publishedBytes <= 96 * 1024, `${(publishedBytes / 1024).toFixed(1)} KiB`);
+// The browser runtime is minified by scripts/build.mjs; keep it that way so the
+// tarball does not silently double in size again.
+check("client runtime is minified", clientBytes > 0 && clientBytes <= 24 * 1024, `${clientBytes} bytes`);
 for (const leaked of ["src/index.ts", "test/plugin.test.ts", "scripts/build.mjs"]) {
   check(`does not publish ${leaked}`, !publishedFiles.includes(leaked));
 }
 for (const required of ["package.json", "README.md", "LICENSE", "dist/index.js", "dist/client.js", "dist/index.d.ts"]) {
   check(`publishes ${required}`, publishedFiles.includes(required));
 }
-console.log(`    ${publishedFiles.length} files, ${(publishedFiles.reduce((sum, file) => sum + fs.statSync(path.join(packageDir, file)).size, 0) / 1024).toFixed(1)} KiB`);
+console.log(`    ${publishedFiles.length} files, ${(publishedBytes / 1024).toFixed(1)} KiB`);
 
 // ---------------------------------------------------------------------------
 // 3. Stage a clean consumer install

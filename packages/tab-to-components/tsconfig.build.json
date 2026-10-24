@@ -5,8 +5,11 @@
     "outDir": "dist",
     "rootDir": "src",
     "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true
+    // The published tarball ships only `dist/`, never `src/`, so source and
+    // declaration maps would point at files consumers do not have. Leaving
+    // them out keeps the npm artifact roughly a third smaller.
+    "sourceMap": false,
+    "declarationMap": false
   },
   "include": ["src"],
   "exclude": ["src/client", "test"]

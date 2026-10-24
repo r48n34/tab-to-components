@@ -3,6 +3,15 @@
 All notable changes to `tab-to-components` are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## 0.2.0 - 2026-10-25
+
+### Packaging
+
+- The npm artifact is roughly a third smaller, with no runtime behavior change:
+  - source maps are no longer published — they referenced `src/`, which the package never ships;
+  - the browser runtime (`dist/client.js`) is now minified.
+- Published artifact: 37 files / 144 kB unpacked (~41 kB tarball) → 21 files / ~88 kB unpacked (~28 kB tarball).
+
 ## 0.1.0
 
 First public release (published as `tab-to-components`).

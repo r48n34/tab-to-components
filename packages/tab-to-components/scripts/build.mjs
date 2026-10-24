@@ -3,6 +3,7 @@
 // block child processes (esbuild/tsup cannot run there).
 import fs from "node:fs";
 import path from "node:path";
+import zlib from "node:zlib";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { rolldown } from "rolldown";
@@ -70,6 +71,10 @@ await bundle.write({
   dir: distDir,
   format: "esm",
   entryFileNames: "client.js",
+  // The runtime is only ever served in dev, and minifying it roughly halves
+  // the published artifact. String sentinels such as `__TTC_READY__` are
+  // preserved, so the package checks keep working.
+  minify: true,
   sourcemap: false,
 });
 await bundle.close();
@@ -81,4 +86,7 @@ if (!fs.existsSync(clientOut)) {
 }
 
 const bytes = fs.statSync(clientOut).size;
-console.log(`tab-to-components: built dist/ (client.js ${bytes} bytes)`);
+const gzipBytes = zlib.gzipSync(fs.readFileSync(clientOut), { level: 9 }).length;
+console.log(
+  `tab-to-components: built dist/ (client.js ${bytes} bytes, ${gzipBytes} bytes gzip)`,
+);

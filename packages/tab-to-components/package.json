@@ -1,6 +1,6 @@
 {
   "name": "tab-to-components",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Alt+click a React element in your dev server to open its JSX source in your editor. Dev-only Vite plugin with first-class React Router v7/v8 framework-mode (SSR) support, React 19, Vite 7 and 8. Choose your IDE inline: VS Code, Cursor, Trae, JetBrains, or any custom command.",
   "type": "module",
   "license": "MIT",
