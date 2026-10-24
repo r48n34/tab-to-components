@@ -8,6 +8,7 @@
     "dev:lib": "pnpm --filter tab-to-components dev",
     "typecheck": "pnpm --filter tab-to-components typecheck",
     "test": "pnpm build && pnpm --filter tab-to-components test",
+    "test:dev-only": "pnpm --filter tab-to-components test:dev-only",
     "test:integration": "pnpm build && pnpm --filter tab-to-components test:integration",
     "test:matrix": "pnpm build && pnpm --filter tab-to-components test:matrix",
     "verify:package": "pnpm build && pnpm --filter tab-to-components verify:package",

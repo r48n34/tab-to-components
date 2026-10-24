@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
-import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { normalizePath, relativeToRoot, resolveFromRoot } from "./paths.js";
 import type {
   EditorCommandConfig,
   EditorLauncher,
@@ -62,10 +62,9 @@ export interface EditorCommand {
 
 /** `C:\\Program Files\\Code\\Code.exe` / `code.cmd` → `code`. */
 export function editorNameOf(command: string): string {
-  return path
-    .basename(command)
-    .replace(/\.(exe|cmd|bat|com)$/i, "")
-    .toLowerCase();
+  const normalized = normalizePath(command).replace(/\/+$/, "");
+  const base = normalized.slice(normalized.lastIndexOf("/") + 1);
+  return base.replace(/\.(exe|cmd|bat|com)$/i, "").toLowerCase();
 }
 
 /**
@@ -315,11 +314,14 @@ export function parseEditorTarget(
     }
   }
 
-  const resolved = path.resolve(root, filePart).replace(/\\/g, "/");
-  const relative = path.relative(root.replace(/\\/g, "/"), resolved);
-  if (relative === "" || relative.startsWith("..") || path.isAbsolute(relative)) {
-    return undefined;
-  }
+  // Normalise separators and resolve without relying on the host platform:
+  // `fileURLToPath` yields `/D:/…` on POSIX for a Windows file URL, and a
+  // project root may be a Windows path even when the tests run on Linux.
+  filePart = normalizePath(filePart);
+  if (/^\/[A-Za-z]:\//.test(filePart)) filePart = filePart.slice(1);
+
+  const resolved = resolveFromRoot(root, filePart);
+  if (!relativeToRoot(root, resolved)) return undefined;
   return { file: resolved, line, column };
 }
 

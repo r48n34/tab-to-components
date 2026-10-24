@@ -16,6 +16,17 @@ Alt + click the "count is 0" button  →
 - **Opens VS Code by default**; `editor: "cursor" | "trae" | "webstorm" | …`, a command template, a launcher function, or `"auto"` for auto-detection.
 - Never ships to production: no markers, no client code, no extra imports in `vite build` / `react-router build`.
 
+### Dev-only by construction
+
+The dev-only guarantee is enforced, not just documented:
+
+- `apply: "serve"` keeps Vite from ever resolving the plugin for `vite build` / `react-router build`.
+- Every hook independently refuses to run for a build command, so a wrapper that strips `apply` still cannot emit markers or the browser runtime.
+- `virtual:tab-to-components/client` only resolves from a running dev server; importing it in a production build fails instead of bundling the overlay.
+- The integration suite and `pnpm verify:package` build real apps and scan the output for dev-only markers.
+
+Install with `-D` and keep it in `vite.config.ts`; never import it from application code.
+
 ---
 
 ## Requirements
@@ -272,11 +283,12 @@ This package lives in a pnpm workspace together with five playground apps (React
 ```bash
 pnpm install
 pnpm build            # tsc + rolldown -> dist/
-pnpm test             # 220 unit tests
+pnpm test             # unit tests (includes the dev-only contract suite)
+pnpm test:dev-only    # fast subset: dev-only guards, virtual module, editor middleware
 pnpm test:integration # Vite 8 dev servers, SSR, production builds, default VS Code + custom editor endpoints
 pnpm test:matrix      # Vite 7 dev servers, SSR, build and plugin orderings
 pnpm e2e              # headless Chrome Alt+click across all 5 playgrounds
-pnpm verify:package   # validates the packed npm artifact
+pnpm verify:package   # validates the packed npm artifact, including a production-build leak check
 ```
 
 Issues and pull requests are welcome.

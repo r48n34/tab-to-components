@@ -68,8 +68,8 @@ describe("plugin shape", () => {
     expect(plugin.enforce).toBe("pre");
   });
 
-  it("resolves the virtual client module", () => {
-    const plugin = asTestPlugin(tabToComponents());
+  it("resolves the virtual client module in a dev server", () => {
+    const plugin = setup();
     const resolveId = plugin.resolveId as AnyFn;
     expect(resolveId.call({}, CLIENT_VIRTUAL_ID)).toBe(CLIENT_RESOLVED_ID);
     expect(resolveId.call({}, "some-other-module")).toBeNull();

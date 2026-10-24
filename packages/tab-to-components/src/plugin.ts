@@ -127,6 +127,12 @@ export function tabToComponents(
   let base = "/";
   let warnedAboutMissingClient = false;
   let warnedAboutCompiledJsx = false;
+  // `apply: "serve"` is the primary dev-only guard, but it is repeated here as
+  // defense in depth: if a wrapper re-registers this plugin object for a build
+  // (for example by removing `apply`), every hook below stays inert so no
+  // marker, virtual module or browser runtime can reach a production artifact.
+  let devServer = false;
+  let warnedAboutBuild = false;
 
   // `editor: "auto"` opts out of the built-in launcher and delegates to Vite's
   // own /__open-in-editor endpoint (launch-editor: auto-detection +
@@ -162,15 +168,34 @@ export function tabToComponents(
 
   const plugin: Plugin = {
     name: "tab-to-components",
+    // Primary dev-only guard. Vite removes the plugin from `vite build` (and
+    // from the build's child compilers) before any hook can run. The command
+    // checks in the hooks below are defense in depth for wrappers that strip
+    // `apply`; production output must stay clean even then.
     apply: "serve",
     enforce: "pre",
 
     configResolved(resolvedConfig) {
+      // Normally unreachable: `apply: "serve"` keeps Vite from resolving this
+      // plugin for a build. If the plugin was forced in anyway, stay inert
+      // instead of throwing, so a production build still succeeds without any
+      // dev-only output.
+      if (resolvedConfig.command !== "serve") {
+        if (!devServer && !warnedAboutBuild) {
+          warnedAboutBuild = true;
+          resolvedConfig.logger.warn(
+            "\n  tab-to-components: this is a dev-only plugin and was ignored for this production build.",
+          );
+        }
+        return;
+      }
+
       // React Router framework mode creates a child Vite server that reuses
       // user plugins (with `configureServer` stripped). Both servers resolve
-      // the same project root, so the first resolved config is authoritative.
+      // the same project root, so the first serve config is authoritative.
       if (config) return;
       config = resolvedConfig;
+      devServer = true;
       root = normalizePath(resolvedConfig.root);
       base = resolvedConfig.base.endsWith("/")
         ? resolvedConfig.base
@@ -178,12 +203,16 @@ export function tabToComponents(
     },
 
     resolveId(id) {
+      // The client runtime can only be resolved from a running dev server. A
+      // production build that imports it fails to resolve instead of bundling
+      // the overlay.
+      if (!devServer) return null;
       if (id === CLIENT_VIRTUAL_ID) return CLIENT_RESOLVED_ID;
       return null;
     },
 
     load(id) {
-      if (id !== CLIENT_RESOLVED_ID) return null;
+      if (!devServer || id !== CLIENT_RESOLVED_ID) return null;
       try {
         return buildClientModule(clientConfig());
       } catch (error) {
@@ -196,7 +225,7 @@ export function tabToComponents(
     },
 
     transform(code, id, transformOptions) {
-      if (!config || config.command !== "serve") return null;
+      if (!devServer || !config) return null;
 
       const parts = resolveModuleId(id, root, filter);
       if (!parts) return null;
@@ -242,6 +271,11 @@ export function tabToComponents(
     },
 
     configureServer(server: ViteDevServer) {
+      // Vite only calls this hook for a dev server, but keep the guard close
+      // to the middleware so a programmatic caller cannot register the editor
+      // endpoint in a build context either.
+      if (!devServer) return;
+
       if (resolved.log) {
         const logger = server.config.logger;
         logger.info(

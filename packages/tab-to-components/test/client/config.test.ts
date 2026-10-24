@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { DEFAULT_CONFIG, install, resolveConfig } from "../../src/client/index";
+import {
+  DEFAULT_CONFIG,
+  install,
+  isModifierHeld,
+  resolveConfig,
+} from "../../src/client/index";
 
 describe("resolveConfig", () => {
   it("falls back to the documented defaults", () => {
@@ -53,5 +58,45 @@ describe("install without a DOM", () => {
     cleanup();
     expect(globalThis.__TTC_READY__).toBeUndefined();
     expect(globalThis.__TTC_INSTALLED__).toBeUndefined();
+  });
+});
+
+describe("isModifierHeld", () => {
+  const held = (keys: Partial<Record<"altKey" | "ctrlKey" | "metaKey" | "shiftKey", boolean>>) => ({
+    altKey: false,
+    ctrlKey: false,
+    metaKey: false,
+    shiftKey: false,
+    ...keys,
+  });
+
+  it("returns false for an empty keyboard configuration", () => {
+    expect(isModifierHeld(held({ altKey: true }), [])).toBe(false);
+  });
+
+  it("requires every configured modifier", () => {
+    expect(isModifierHeld(held({ altKey: true }), ["alt"])).toBe(true);
+    expect(isModifierHeld(held({ altKey: true }), ["alt", "shift"])).toBe(false);
+    expect(
+      isModifierHeld(held({ altKey: true, shiftKey: true }), ["alt", "shift"]),
+    ).toBe(true);
+  });
+
+  it("ignores modifiers that are not configured", () => {
+    expect(
+      isModifierHeld(
+        held({ altKey: true, ctrlKey: true, metaKey: true, shiftKey: true }),
+        ["alt"],
+      ),
+    ).toBe(true);
+  });
+
+  it("supports every documented modifier", () => {
+    expect(isModifierHeld(held({ ctrlKey: true }), ["ctrl"])).toBe(true);
+    expect(isModifierHeld(held({ metaKey: true }), ["meta"])).toBe(true);
+    expect(isModifierHeld(held({ shiftKey: true }), ["shift"])).toBe(true);
+    expect(isModifierHeld(held({}), ["ctrl"])).toBe(false);
+    expect(isModifierHeld(held({}), ["meta"])).toBe(false);
+    expect(isModifierHeld(held({}), ["shift"])).toBe(false);
   });
 });

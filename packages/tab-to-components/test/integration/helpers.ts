@@ -90,11 +90,14 @@ export function expectNoBuildLeak(files: string[], contents: string[]): void {
     "virtual:tab-to-components/client",
     "__TTC_CONFIG__",
     "__TTC_READY__",
+    "__TTC_INSTALLED__",
   ];
   for (let index = 0; index < files.length; index += 1) {
     const file = files[index] ?? "";
     const code = contents[index] ?? "";
-    if (!/\.(js|mjs|cjs)$/.test(file)) continue;
+    // JavaScript chunks and the built HTML shell are the two places dev-only
+    // output could survive. (Source maps are not published or built.)
+    if (!/\.(js|mjs|cjs|html)$/.test(file)) continue;
     for (const forbidden of forbiddens) {
       if (code.includes(forbidden)) {
         throw new Error(

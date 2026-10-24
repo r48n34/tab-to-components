@@ -3,6 +3,36 @@
 All notable changes to `tab-to-components` are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## 0.3.0 - 2026-10-25
+
+### Dev-only hardening
+
+- Added a second, independent build-mode guard to every plugin hook. `apply: "serve"` remains the primary gate, but if a wrapper re-registers the plugin for `vite build` (for example with `apply` stripped), `configResolved`, `transform`, `resolveId`, `load` and `configureServer` now stay inert. No markers, virtual imports or browser runtime can reach a production build.
+- `virtual:tab-to-components/client` now resolves only from a running dev server. A production build that imports it fails to resolve instead of bundling the overlay.
+- The custom editor middleware is only registered for a dev server.
+- The npm exports map keeps `dist/client.js` non-importable from application code; `verify:package` asserts it.
+
+### Cross-platform paths
+
+- Reworked Vite id resolution to be independent of the host platform. Windows drive-letter paths, UNC paths and POSIX roots are normalized lexically, so the same ids resolve on Windows and Linux CI.
+- `parseEditorTarget` and `editorNameOf` no longer rely on host-specific `path` semantics; Windows, POSIX and `file://` targets are validated consistently.
+- `/@fs/` ids, root-relative URLs and query strings are handled the same way under Windows and POSIX roots.
+- Added POSIX-root coverage for module resolution, editor targets and `/@fs/` paths.
+
+### Tests and tooling
+
+- Unit suite: 225 → 342 tests (17 files); integration suite: 26 → 29 tests.
+- Added `pnpm test:dev-only` (41 tests): hook-level build guards, virtual module ids/config prelude, and the editor middleware (methods, base paths, traversal, invalid targets, launcher failures).
+- Added a production-build integration test that force-enables the plugin with `apply` stripped and scans the output for dev-only artifacts.
+- `verify:package` now builds the exact packed artifact in production, proves no dev runtime leaks, verifies the virtual module cannot resolve, and blocks client subpath imports.
+- Expanded coverage for path styles, editor parsing/presets, transform edge cases, plugin options, and client hover/boot behavior.
+- GitHub Actions: checkout v5, setup-node v5, pnpm/action-setup v6; CI no longer relies on the deprecated Node 20 action runtime.
+
+### Documentation
+
+- Added a “Dev-only by construction” section to the package README and explained the new production-build gates.
+- Refreshed the test/packaging counts in `PUBLISHING.md` and the README development commands.
+
 ## 0.2.0 - 2026-10-25
 
 ### Packaging

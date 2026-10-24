@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  isClientEntryModule,
   isDeclarationFile,
   isNonExecutableQuery,
   isSourceFile,
+  isWindowsAbsolutePath,
   normalizePath,
   relativeToRoot,
+  resolveFromRoot,
   resolveModuleId,
   toFilePath,
 } from "../src/paths.js";
@@ -141,5 +144,160 @@ describe("path helpers", () => {
     }
     expect(isNonExecutableQuery("raw&import")).toBe(true);
     expect(isNonExecutableQuery("import&raw")).toBe(true);
+    expect(isNonExecutableQuery("raw=true")).toBe(true);
+    expect(isNonExecutableQuery("url=")).toBe(true);
+    expect(isNonExecutableQuery("worker&type=module")).toBe(true);
+    expect(isNonExecutableQuery("?raw")).toBe(true);
+    expect(isNonExecutableQuery("foo=1&bar=2")).toBe(false);
+  });
+});
+
+describe("isWindowsAbsolutePath", () => {
+  it("recognises Windows drive and UNC paths in either slash style", () => {
+    for (const value of ["C:/x", "D:\\x", "c:/", "//server/share/x"]) {
+      expect(isWindowsAbsolutePath(value), value).toBe(true);
+    }
+    for (const value of ["/home/x", "C:", "src/x", ""]) {
+      expect(isWindowsAbsolutePath(value), value).toBe(false);
+    }
+  });
+});
+
+describe("resolveFromRoot", () => {
+  it("collapses dot segments without consulting the host platform", () => {
+    expect(resolveFromRoot("D:/Github/app", "src/../app.tsx")).toBe(
+      "D:/Github/app/app.tsx",
+    );
+    expect(resolveFromRoot("/home/runner/app/", "routes/../app.tsx")).toBe(
+      "/home/runner/app/app.tsx",
+    );
+  });
+
+  it("joins relative paths under drive and UNC roots", () => {
+    expect(resolveFromRoot("D:/", "app.tsx")).toBe("D:/app.tsx");
+    expect(resolveFromRoot("//server/share/app", "src/a.tsx")).toBe(
+      "//server/share/app/src/a.tsx",
+    );
+  });
+
+  it("treats leading-slash paths differently per root style", () => {
+    // Under a Windows root a leading slash is a root-relative path.
+    expect(resolveFromRoot("D:/Github/app", "/src/App.tsx")).toBe(
+      "D:/Github/app/src/App.tsx",
+    );
+    // Under a POSIX root it is already absolute and must not be re-rooted.
+    expect(resolveFromRoot("/home/runner/app", "/tmp/other.tsx")).toBe(
+      "/tmp/other.tsx",
+    );
+  });
+
+  it("keeps absolute paths on the matching platform", () => {
+    expect(resolveFromRoot("D:/app", "D:\\other\\x.tsx")).toBe("D:/other/x.tsx");
+    expect(resolveFromRoot("D:/app", "//server/share/x.tsx")).toBe(
+      "//server/share/x.tsx",
+    );
+  });
+});
+
+describe("relativeToRoot path styles", () => {
+  it("compares Windows paths case-insensitively", () => {
+    expect(relativeToRoot("D:/GitHub/app", "d:/github/APP/app/x.tsx")).toBe(
+      "app/x.tsx",
+    );
+  });
+
+  it("handles drive, POSIX and UNC roots", () => {
+    expect(relativeToRoot("D:/", "D:/app.tsx")).toBe("app.tsx");
+    expect(relativeToRoot("/", "/app.tsx")).toBe("app.tsx");
+    expect(relativeToRoot("/", "/")).toBeUndefined();
+    expect(relativeToRoot("//server/share/app", "//server/share/app/x.tsx")).toBe(
+      "x.tsx",
+    );
+  });
+
+  it("does not accept a sibling that only shares a prefix", () => {
+    expect(
+      relativeToRoot("D:/GitHub/app", "D:/GitHub/application/x.tsx"),
+    ).toBeUndefined();
+    expect(
+      relativeToRoot("//server/share/app", "//server/share/other/x.tsx"),
+    ).toBeUndefined();
+  });
+});
+
+describe("toFilePath path styles", () => {
+  it("normalises a root-absolute Windows id", () => {
+    expect(toFilePath("/D:/proj/app.tsx", "D:/proj")).toBe("D:/proj/app.tsx");
+  });
+
+  it("accepts a root with a trailing slash", () => {
+    expect(toFilePath(`${ROOT}/app/App.tsx`, `${ROOT}/`)).toBe(
+      `${ROOT}/app/App.tsx`,
+    );
+  });
+
+  it("maps root-relative URLs under a Windows root", () => {
+    expect(toFilePath("/app/App.tsx", ROOT)).toBe(`${ROOT}/app/App.tsx`);
+    // A leading slash under a POSIX root is an absolute POSIX path, not a
+    // root-relative URL (mirrors resolveFromRoot's documented resolution).
+    expect(toFilePath("/app/App.tsx", "/home/runner/app")).toBe(
+      "/app/App.tsx",
+    );
+  });
+});
+
+describe("resolveModuleId path styles", () => {
+  it("accepts uppercase source extensions", () => {
+    expect(resolveModuleId(`${ROOT}/app/App.TSX`, ROOT, {})).toBeDefined();
+    expect(resolveModuleId(`${ROOT}/app/App.MTS`, ROOT, {})).toBeDefined();
+  });
+
+  it("rejects data queries in every spelling", () => {
+    for (const query of ["raw", "raw=1", "url=", "inline&foo=1", "worker&type=module", "direct"]) {
+      expect(
+        resolveModuleId(`${ROOT}/app/icon.tsx?${query}`, ROOT, {}),
+        query,
+      ).toBeUndefined();
+    }
+  });
+
+  it("ignores .vite and .git internals", () => {
+    for (const rel of [".vite/deps/x.js", ".git/x.tsx", "app/.vite/x.tsx"]) {
+      expect(resolveModuleId(`${ROOT}/${rel}`, ROOT, {}), rel).toBeUndefined();
+    }
+  });
+
+  it("rejects virtual ids and /@id/ ids", () => {
+    expect(resolveModuleId("/@id/__x00__virtual:x", ROOT, {})).toBeUndefined();
+    expect(resolveModuleId("\0virtual:x", ROOT, {})).toBeUndefined();
+  });
+});
+
+describe("isClientEntryModule variants", () => {
+  it("matches every supported client entry extension", () => {
+    for (const file of [
+      "entry.client.js",
+      "entry.client.jsx",
+      "entry.client.mjs",
+      "entry.client.cjs",
+      "entry.client.ts",
+      "entry.client.tsx",
+      "entry.client.mts",
+      "entry.client.cts",
+      "app/routes/entry.client.tsx",
+    ]) {
+      expect(isClientEntryModule(file), file).toBe(true);
+    }
+  });
+
+  it("does not match server entries or prefixed names", () => {
+    for (const file of [
+      "entry.server.tsx",
+      "my-entry.client.tsx",
+      "entry.client.tsx.bak",
+      "app/entry.client.tsx/gen.ts",
+    ]) {
+      expect(isClientEntryModule(file), file).toBe(false);
+    }
   });
 });

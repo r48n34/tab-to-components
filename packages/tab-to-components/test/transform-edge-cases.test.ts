@@ -206,3 +206,64 @@ describe("overlay import in statement-less modules", () => {
     expect(out).toContain(`import "${OVERLAY}"`);
   });
 });
+
+describe("marker placement in unusual elements", () => {
+  it("places the marker after every existing attribute and spread", () => {
+    const code = 'const a = <div {...a} {...b} id="x" />;\n';
+    const out = run(code)?.code ?? "";
+
+    expect(out).toContain('id="x" data-ttc=');
+    const idIndex = out.indexOf('id="x"');
+    const markerIndex = out.indexOf("data-ttc");
+    expect(idIndex).toBeGreaterThan(-1);
+    expect(markerIndex).toBeGreaterThan(idIndex);
+    expect(parseModule(out, FILE)).toBeTruthy();
+  });
+
+  it("keeps type arguments before attributes and the marker last", () => {
+    const code = 'const a = <Foo<string> id="x" />;\n';
+    const out = run(code)?.code ?? "";
+
+    expect(out).toContain('<Foo<string> id="x" data-ttc=');
+    expect(parseModule(out, FILE)).toBeTruthy();
+  });
+
+  it("handles namespaced attributes", () => {
+    const code = 'const a = <svg><use xlink:href="#icon" /></svg>;\n';
+    const out = run(code)?.code ?? "";
+
+    expect(out).toContain('xlink:href="#icon" data-ttc=');
+    expect(parseModule(out, FILE)).toBeTruthy();
+  });
+
+  it("handles fragments and JSX rendered from an array callback", () => {
+    const code = [
+      "export const A = () => (",
+      "  <>",
+      "    {items.map((item) => (",
+      "      <li key={item.id}>{item.label}</li>",
+      "    ))}",
+      "  </>",
+      ");",
+      "",
+    ].join("\n");
+    const out = run(code)?.code ?? "";
+
+    expect(out).toContain(expectedAt(code, "<li"));
+    expect(parseModule(out, FILE)).toBeTruthy();
+  });
+
+  it("returns undefined when neither markers nor overlay are requested", () => {
+    expect(
+      transformSource("export const value = 1;\n", FILE, {
+        relPath: REL,
+        marker: false,
+      }),
+    ).toBeUndefined();
+  });
+
+  it("returns undefined for empty and whitespace-only sources", () => {
+    expect(run("")).toBeUndefined();
+    expect(run("   \n\t\n")).toBeUndefined();
+  });
+});

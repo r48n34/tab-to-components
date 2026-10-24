@@ -372,4 +372,98 @@ describe("component chain menu", () => {
     expect(contextmenu.defaultPrevented).toBe(false);
     expect(shadowRoot().querySelectorAll(".ttc-menu-item")).toHaveLength(0);
   });
+
+  it("ignores right-click without the modifier", () => {
+    setConfig();
+    const button = mountReactButton();
+    install();
+
+    const contextmenu = mouseEvent("contextmenu", button);
+
+    expect(contextmenu.defaultPrevented).toBe(false);
+    expect(shadowRoot().querySelectorAll(".ttc-menu-item")).toHaveLength(0);
+  });
+});
+
+describe("hover lifecycle", () => {
+  it("does not draw the outline until the modifier is armed", async () => {
+    setConfig();
+    const button = mountReactButton();
+    install();
+
+    mouseEvent("mousemove", button);
+    const outline = shadowRoot().querySelector<HTMLElement>(".ttc-outline");
+    expect(outline?.style.display ?? "none").toBe("none");
+
+    pressAlt();
+    mouseEvent("mousemove", button, { altKey: true });
+    await vi.waitFor(() => {
+      expect(
+        shadowRoot().querySelector<HTMLElement>(".ttc-outline")?.style.display,
+      ).toBe("block");
+    });
+  });
+
+  it("hides the hover outline on Escape", async () => {
+    setConfig();
+    const button = mountReactButton();
+    install();
+
+    pressAlt();
+    mouseEvent("mousemove", button, { altKey: true });
+    await vi.waitFor(() => {
+      expect(
+        shadowRoot().querySelector<HTMLElement>(".ttc-outline")?.style.display,
+      ).toBe("block");
+    });
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Escape",
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+
+    expect(
+      shadowRoot().querySelector<HTMLElement>(".ttc-outline")?.style.display ??
+        "none",
+    ).toBe("none");
+  });
+
+  it("hides the hover outline when the window loses focus", async () => {
+    setConfig();
+    const button = mountReactButton();
+    install();
+
+    pressAlt();
+    mouseEvent("mousemove", button, { altKey: true });
+    await vi.waitFor(() => {
+      expect(
+        shadowRoot().querySelector<HTMLElement>(".ttc-outline")?.style.display,
+      ).toBe("block");
+    });
+
+    window.dispatchEvent(new Event("blur"));
+
+    expect(
+      shadowRoot().querySelector<HTMLElement>(".ttc-outline")?.style.display ??
+        "none",
+    ).toBe("none");
+  });
+
+  it("clears the hover target when the pointer leaves the window", async () => {
+    setConfig();
+    const button = mountReactButton();
+    install();
+
+    pressAlt();
+    mouseEvent("mousemove", button, { altKey: true });
+    mouseEvent("mouseout", button, { relatedTarget: null });
+
+    expect(
+      shadowRoot().querySelector<HTMLElement>(".ttc-outline")?.style.display ??
+        "none",
+    ).toBe("none");
+  });
 });

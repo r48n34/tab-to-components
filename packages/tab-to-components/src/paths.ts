@@ -23,6 +23,98 @@ export function normalizePath(value: string): string {
 }
 
 /**
+ * True for Windows-style absolute paths: `C:/x`, `D:\x` and UNC
+ * `\\server\share`. Drive-letter paths are absolute on every host, which is
+ * what lets the helpers below treat them the same way on Linux (CI) as on
+ * Windows (a developer machine).
+ */
+export function isWindowsAbsolutePath(value: string): boolean {
+  const normalized = normalizePath(value);
+  return /^[A-Za-z]:\//.test(normalized) || normalized.startsWith("//");
+}
+
+/**
+ * Collapse `.` / `..` segments and duplicate separators lexically. Unlike
+ * `path.normalize` / `path.resolve` this never consults the host platform, so
+ * a Windows path behaves identically on Windows, Linux and macOS.
+ */
+function collapsePathSegments(value: string): string {
+  const normalized = normalizePath(value);
+  let prefix = "";
+  let rest = normalized;
+
+  const drive = /^[A-Za-z]:\//.exec(normalized);
+  if (drive) {
+    prefix = drive[0];
+    rest = normalized.slice(prefix.length);
+  } else if (normalized.startsWith("//")) {
+    prefix = "//";
+    rest = normalized.slice(2);
+  } else if (normalized.startsWith("/")) {
+    prefix = "/";
+    rest = normalized.slice(1);
+  }
+
+  const segments: string[] = [];
+  for (const segment of rest.split("/")) {
+    if (segment === "" || segment === ".") continue;
+    if (segment === "..") {
+      if (segments.length > 0) segments.pop();
+      continue;
+    }
+    segments.push(segment);
+  }
+  return `${prefix}${segments.join("/")}`;
+}
+
+/** Remove trailing slashes while keeping a bare `/` and a drive root (`D:/`). */
+function stripTrailingSlashes(value: string): string {
+  let result = value;
+  while (result.length > 1 && result.endsWith("/")) {
+    if (/^[A-Za-z]:\/$/.test(result)) break;
+    result = result.slice(0, -1);
+  }
+  return result;
+}
+
+function joinWithBase(base: string, file: string): string {
+  const suffix = normalizePath(file).replace(/^\/+/, "");
+  if (base === "") return collapsePathSegments(suffix);
+  if (base === "/") return collapsePathSegments(`/${suffix}`);
+  return collapsePathSegments(`${base}/${suffix}`);
+}
+
+function joinFromRoot(root: string, file: string): string {
+  return joinWithBase(stripTrailingSlashes(normalizePath(root)), file);
+}
+
+/**
+ * Lexically resolve `file` against `root`, without letting the host platform
+ * decide what "absolute" means. Windows-style roots/paths keep Windows
+ * semantics; everything else is resolved as a POSIX path.
+ */
+export function resolveFromRoot(root: string, file: string): string {
+  const normalizedRoot = stripTrailingSlashes(normalizePath(root));
+  const normalizedFile = normalizePath(file);
+
+  if (isWindowsAbsolutePath(normalizedFile)) {
+    return collapsePathSegments(normalizedFile);
+  }
+  if (isWindowsAbsolutePath(normalizedRoot)) {
+    return joinFromRoot(normalizedRoot, normalizedFile);
+  }
+  if (normalizedFile.startsWith("/")) {
+    // A leading slash under a POSIX-style root is an absolute POSIX path.
+    return collapsePathSegments(normalizedFile);
+  }
+  if (!normalizedRoot.startsWith("/")) {
+    // Relative roots keep the historical cwd-based resolution.
+    return normalizePath(path.resolve(normalizedRoot, normalizedFile));
+  }
+  return joinFromRoot(normalizedRoot, normalizedFile);
+}
+
+/**
  * Convert a Vite module id (absolute path, root-relative URL, `/@fs/` URL, or
  * any of those with a query string) into an absolute file path.
  * Returns `undefined` for virtual modules and anything that cannot be mapped.
@@ -48,27 +140,27 @@ export function toFilePath(id: string, root: string): string | undefined {
     return undefined;
   }
 
+  file = normalizePath(file);
+
   if (file.startsWith("/@fs/")) {
     file = file.slice("/@fs/".length);
     // Vite serves absolute paths as `/@fs/<absolute path>`. Windows keeps its
     // drive prefix (`/@fs/C:/x`); POSIX loses the leading slash (`/@fs/home/`).
-    if (/^\/?[A-Za-z]:\//.test(file)) file = file.replace(/^\//, "");
-    else if (path.sep === "/" && !file.startsWith("/")) file = `/${file}`;
+    if (/^\/?[A-Za-z]:\//.test(file)) {
+      file = file.replace(/^\//, "");
+    } else if (
+      !file.startsWith("/") &&
+      (path.sep === "/" || !isWindowsAbsolutePath(root))
+    ) {
+      file = `/${file}`;
+    }
   } else if (file.startsWith("/@id/")) {
     return undefined;
   } else if (/^\/[A-Za-z]:\//.test(file)) {
     file = file.slice(1);
-  } else if (path.sep === "\\" && file.startsWith("/")) {
-    // Root-relative URL on Windows, e.g. `/app/routes/home.tsx`. On POSIX a
-    // leading slash is an absolute filesystem path and must fall through.
-    return path.resolve(root, `.${file}`).replace(/\\/g, "/");
   }
 
-  if (!path.isAbsolute(file)) {
-    return path.resolve(root, file).replace(/\\/g, "/");
-  }
-
-  return path.normalize(file).replace(/\\/g, "/");
+  return resolveFromRoot(root, file);
 }
 
 /**
@@ -76,9 +168,44 @@ export function toFilePath(id: string, root: string): string | undefined {
  * when the file lives outside the project root.
  */
 export function relativeToRoot(root: string, file: string): string | undefined {
-  const rel = path.relative(root, file);
-  if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) return undefined;
-  return normalizePath(rel);
+  const normalizedRoot = stripTrailingSlashes(normalizePath(root));
+  const normalizedFile = normalizePath(file);
+
+  if (
+    isWindowsAbsolutePath(normalizedRoot) ||
+    isWindowsAbsolutePath(normalizedFile)
+  ) {
+    if (
+      !isWindowsAbsolutePath(normalizedRoot) ||
+      !isWindowsAbsolutePath(normalizedFile)
+    ) {
+      return undefined;
+    }
+    const rootPath = collapsePathSegments(normalizedRoot);
+    const filePath = collapsePathSegments(normalizedFile);
+    const rootKey = rootPath.toLowerCase();
+    const fileKey = filePath.toLowerCase();
+    if (fileKey === rootKey) return undefined;
+    // `rootPath` may already end with a slash when it is a drive/UNC root.
+    const rootPrefix = rootPath.endsWith("/") ? rootKey : `${rootKey}/`;
+    if (!fileKey.startsWith(rootPrefix)) return undefined;
+    return filePath.slice(rootPrefix.length);
+  }
+
+  const rootPath = collapsePathSegments(normalizedRoot);
+  const filePath = collapsePathSegments(normalizedFile);
+  if (!rootPath.startsWith("/") || !filePath.startsWith("/")) {
+    // Preserve the historical cwd-relative behaviour for relative inputs.
+    const rel = path.relative(normalizedRoot, normalizedFile);
+    if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) return undefined;
+    return normalizePath(rel);
+  }
+  if (rootPath === "/") {
+    if (filePath === "/") return undefined;
+    return filePath.slice(1);
+  }
+  if (!filePath.startsWith(`${rootPath}/`)) return undefined;
+  return filePath.slice(rootPath.length + 1);
 }
 
 const DEFAULT_EXCLUDES = [

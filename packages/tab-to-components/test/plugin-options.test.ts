@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { AUTO_EDITOR, DEFAULT_EDITOR, tabToComponents } from "../src/index.js";
-import { CLIENT_RESOLVED_ID } from "../src/virtual.js";
+import { CLIENT_RESOLVED_ID, CLIENT_VIRTUAL_ID } from "../src/virtual.js";
 
 const ROOT = "D:/proj";
 
@@ -293,6 +293,117 @@ describe("plugin instances and the React Router child compiler", () => {
   it("returns null from load for other ids", () => {
     const plugin = createPlugin();
     expect((plugin.load as AnyFn).call({}, "/some/other/module")).toBeNull();
+  });
+});
+
+describe("filter and overlay combinations", () => {
+  it("accepts a single RegExp for include and exclude", () => {
+    const plugin = createPlugin({
+      include: /^app\/routes\//,
+      exclude: /\.stories\.tsx$/,
+    });
+
+    expect(
+      transform(plugin, SOURCE, `${ROOT}/app/routes/home.tsx`),
+    ).not.toBeNull();
+    expect(
+      transform(plugin, SOURCE, `${ROOT}/app/components/Button.tsx`),
+    ).toBeNull();
+    expect(
+      transform(plugin, SOURCE, `${ROOT}/app/routes/Button.stories.tsx`),
+    ).toBeNull();
+    expect(
+      transform(plugin, SOURCE, `${ROOT}/app/routes/home.tsx?raw`),
+    ).toBeNull();
+  });
+
+  it("returns null when both markers and overlay are disabled", () => {
+    const plugin = createPlugin({ ssr: false, overlay: false });
+
+    expect(
+      transform(plugin, SOURCE, `${ROOT}/app/routes/home.tsx`, "ssr"),
+    ).toBeNull();
+  });
+
+  it("keeps client markers even with ssr and overlay disabled", () => {
+    const plugin = createPlugin({ ssr: false, overlay: false });
+    const client = transform(
+      plugin,
+      SOURCE,
+      `${ROOT}/app/routes/home.tsx`,
+      "client",
+    );
+
+    expect(client?.code).toContain("data-ttc");
+    expect(client?.code).not.toContain(CLIENT_VIRTUAL_ID);
+  });
+
+  it.each([
+    "entry.client.js",
+    "entry.client.jsx",
+    "entry.client.mjs",
+    "entry.client.cjs",
+    "entry.client.ts",
+    "entry.client.tsx",
+    "entry.client.mts",
+    "entry.client.cts",
+    "app/entry.client.tsx",
+  ])("treats %s as a client entry in overlay: 'entry' mode", (file) => {
+    const plugin = createPlugin({ overlay: "entry" });
+    const result = transform(
+      plugin,
+      'export const value = 1;\n',
+      `${ROOT}/${file}`,
+      "client",
+    );
+
+    expect(result?.code).toContain(CLIENT_VIRTUAL_ID);
+  });
+
+  it("does not treat entry.server files as client entries", () => {
+    const plugin = createPlugin({ overlay: "entry" });
+    const result = transform(
+      plugin,
+      'export const value = 1;\n',
+      `${ROOT}/app/entry.server.tsx`,
+      "client",
+    );
+
+    expect(result?.code ?? "").not.toContain(CLIENT_VIRTUAL_ID);
+  });
+});
+
+describe("resolved client config", () => {
+  it("normalizes the root and base the browser runtime receives", () => {
+    const plugin = tabToComponents() as unknown as TestPlugin;
+    plugin.configResolved?.({
+      root: `${ROOT}/`,
+      base: "/app",
+      command: "serve",
+      logger: { info() {}, warn() {}, error() {} },
+    } as never);
+
+    const payload = clientPayload(plugin);
+    expect(payload.root).toBe(ROOT);
+    expect(payload.base).toBe("/app/");
+  });
+
+  it("normalizes a base that already has a trailing slash", () => {
+    const plugin = tabToComponents() as unknown as TestPlugin;
+    plugin.configResolved?.({
+      root: ROOT,
+      base: "/nested/app/",
+      command: "serve",
+      logger: { info() {}, warn() {}, error() {} },
+    } as never);
+
+    expect(clientPayload(plugin).base).toBe("/nested/app/");
+  });
+
+  it("does not read the client asset for unrelated modules", () => {
+    const plugin = createPlugin();
+    expect((plugin.load as AnyFn).call({}, CLIENT_RESOLVED_ID)).toBeTruthy();
+    expect((plugin.load as AnyFn).call({}, "/src/App.tsx")).toBeNull();
   });
 });
 

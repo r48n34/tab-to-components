@@ -14,14 +14,17 @@ jobs:
     name: Build, type-check, test and package check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      # v5 actions and pnpm/action-setup v6 run on the Node 24 action runtime,
+      # so the runner no longer has to force them off the deprecated Node 20
+      # runtime (the "Node.js 20 is deprecated" notice).
+      - uses: actions/checkout@v5
 
-      # No `version` here on purpose: pnpm/action-setup@v4 reads the exact
+      # No `version` here on purpose: pnpm/action-setup reads the exact
       # version from `packageManager` in package.json. Specifying both makes
       # the action fail with "Multiple versions of pnpm specified".
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: pnpm
@@ -37,9 +40,9 @@ jobs:
   # e2e:
   #   runs-on: ubuntu-latest
   #   steps:
-  #     - uses: actions/checkout@v4
-  #     - uses: pnpm/action-setup@v4
-  #     - uses: actions/setup-node@v4
+  #     - uses: actions/checkout@v5
+  #     - uses: pnpm/action-setup@v6
+  #     - uses: actions/setup-node@v5
   #       with: { node-version: 22, cache: pnpm }
   #     - run: pnpm install --frozen-lockfile
   #     - run: CHROME_PATH=/usr/bin/google-chrome pnpm e2e

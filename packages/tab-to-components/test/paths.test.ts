@@ -108,6 +108,39 @@ describe("resolveModuleId", () => {
   });
 });
 
+describe("POSIX roots", () => {
+  const POSIX_ROOT = "/home/runner/app";
+
+  it("keeps absolute POSIX ids and unwraps /@fs/ ids", () => {
+    expect(toFilePath(`${POSIX_ROOT}/app/root.tsx`, POSIX_ROOT)).toBe(
+      `${POSIX_ROOT}/app/root.tsx`,
+    );
+    expect(toFilePath("/@fs/home/runner/app/app/root.tsx", POSIX_ROOT)).toBe(
+      `${POSIX_ROOT}/app/root.tsx`,
+    );
+  });
+
+  it("returns project relative paths", () => {
+    expect(relativeToRoot(POSIX_ROOT, `${POSIX_ROOT}/app/routes/home.tsx`)).toBe(
+      "app/routes/home.tsx",
+    );
+    expect(relativeToRoot(POSIX_ROOT, "/home/runner/outside.tsx")).toBeUndefined();
+  });
+
+  it("resolves module ids", () => {
+    expect(
+      resolveModuleId(`${POSIX_ROOT}/app/routes/home.tsx`, POSIX_ROOT, {}),
+    ).toEqual({
+      file: `${POSIX_ROOT}/app/routes/home.tsx`,
+      rel: "app/routes/home.tsx",
+    });
+  });
+
+  it("does not mix Windows and POSIX path styles", () => {
+    expect(relativeToRoot(POSIX_ROOT, "D:/Github/app/app.tsx")).toBeUndefined();
+  });
+});
+
 describe("isClientEntryModule", () => {
   it("matches entry.client files only", () => {
     expect(isClientEntryModule("app/entry.client.tsx")).toBe(true);

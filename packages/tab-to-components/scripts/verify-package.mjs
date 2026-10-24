@@ -9,7 +9,9 @@
 //   4. imports the packed copy and checks the public API;
 //   5. type-checks a consumer file against the packed .d.ts;
 //   6. boots a Vite dev server with the *packed* copy and checks that markers,
-//      the overlay import and the bundled client runtime all work.
+//      the overlay import and the bundled client runtime all work;
+//   7. proves the packed copy cannot leak into a production build, even when a
+//      wrapper strips its `apply: "serve"` gate.
 import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
@@ -64,7 +66,7 @@ function copyFile(from, to) {
 // ---------------------------------------------------------------------------
 // 1. Metadata
 // ---------------------------------------------------------------------------
-console.log("\n[1/6] package metadata");
+console.log("\n[1/7] package metadata");
 const manifestPath = path.join(packageDir, "package.json");
 const manifest = readJson(manifestPath);
 
@@ -78,6 +80,15 @@ check("engines.node is set", Boolean(manifest.engines?.node));
 check("peerDependencies.vite is set", Boolean(manifest.peerDependencies?.vite), manifest.peerDependencies?.vite);
 check("files includes dist", Array.isArray(manifest.files) && manifest.files.includes("dist"));
 check("publishConfig.access is public", manifest.publishConfig?.access === "public");
+
+// The browser runtime ships inside dist/ because the dev server serves it, but
+// application code must not be able to import it as a package entry.
+const exportKeys = Object.keys(manifest.exports ?? {});
+check(
+  "does not export the browser runtime as a subpath",
+  !exportKeys.includes("./dist/client.js") && !exportKeys.includes("./client"),
+  exportKeys.join(", "),
+);
 
 const requiredFiles = ["README.md", "LICENSE", "CHANGELOG.md"];
 for (const file of requiredFiles) {
@@ -131,7 +142,7 @@ check("vite is not a hard runtime dependency", !(manifest.dependencies ?? {}).vi
 // ---------------------------------------------------------------------------
 // 2. Build the file list npm would publish
 // ---------------------------------------------------------------------------
-console.log("\n[2/6] npm file list");
+console.log("\n[2/7] npm file list");
 function npmFileList() {
   const files = new Set();
   for (const entry of manifest.files ?? []) {
@@ -159,7 +170,9 @@ const clientBytes = fs.existsSync(path.join(packageDir, "dist", "client.js"))
   : 0;
 check("published set is small (no sources/tests/maps)", publishedFiles.length < 32, `${publishedFiles.length} files`);
 check("publishes no source maps", publishedMaps.length === 0, publishedMaps.join(", "));
-check("published payload is small", publishedBytes <= 96 * 1024, `${(publishedBytes / 1024).toFixed(1)} KiB`);
+// The unpacked payload is compiled output plus docs. Keep it comfortably small;
+// changelog/README growth must not silently balloon the published artifact.
+check("published payload is small", publishedBytes <= 112 * 1024, `${(publishedBytes / 1024).toFixed(1)} KiB`);
 // The browser runtime is minified by scripts/build.mjs; keep it that way so the
 // tarball does not silently double in size again.
 check("client runtime is minified", clientBytes > 0 && clientBytes <= 24 * 1024, `${clientBytes} bytes`);
@@ -174,7 +187,7 @@ console.log(`    ${publishedFiles.length} files, ${(publishedBytes / 1024).toFix
 // ---------------------------------------------------------------------------
 // 3. Stage a clean consumer install
 // ---------------------------------------------------------------------------
-console.log("\n[3/6] clean consumer install");
+console.log("\n[3/7] clean consumer install");
 fs.rmSync(workDir, { recursive: true, force: true });
 fs.mkdirSync(stagingDir, { recursive: true });
 for (const file of publishedFiles) {
@@ -198,10 +211,22 @@ check(
   resolvedEntry,
 );
 
+let clientSubpathBlocked = false;
+try {
+  consumerRequire.resolve("tab-to-components/dist/client.js");
+} catch {
+  clientSubpathBlocked = true;
+}
+check(
+  "npm exports map blocks the client runtime subpath",
+  clientSubpathBlocked,
+  "application code must not be able to import the dev runtime",
+);
+
 // ---------------------------------------------------------------------------
 // 4. Import the packed copy and check the public API
 // ---------------------------------------------------------------------------
-console.log("\n[4/6] packed package API");
+console.log("\n[4/7] packed package API");
 const packed = await import(pathToFileURL(resolvedEntry).href);
 check("exports tabToComponents", typeof packed.tabToComponents === "function");
 check("exports VERSION", typeof packed.VERSION === "string", packed.VERSION);
@@ -215,7 +240,7 @@ check("exports types helper constants", packed.MARKER_ATTR === "data-ttc" && pac
 // ---------------------------------------------------------------------------
 // 5. Type-check a consumer file against the packed declarations
 // ---------------------------------------------------------------------------
-console.log("\n[5/6] consumer TypeScript");
+console.log("\n[5/7] consumer TypeScript");
 const consumerTypeFile = path.join(consumerDir, "typecheck.ts");
 fs.writeFileSync(
   consumerTypeFile,
@@ -260,7 +285,7 @@ check("consumer type-checks against the packed .d.ts", typeDiagnostics.length ==
 // ---------------------------------------------------------------------------
 // 6. Run the packed copy in a real Vite dev server
 // ---------------------------------------------------------------------------
-console.log("\n[6/6] packed package in a Vite dev server");
+console.log("\n[6/7] packed package in a Vite dev server");
 const { createServer } = await import("vite");
 const reactPlugin = (await import("@vitejs/plugin-react")).default;
 const server = await createServer({
@@ -292,6 +317,127 @@ try {
 } finally {
   await server.close();
 }
+
+// ---------------------------------------------------------------------------
+// 7. The packed copy cannot leak into a production build
+// ---------------------------------------------------------------------------
+console.log("\n[7/7] packed package in a production build");
+const buildEntry = path.join(consumerDir, "src", "main.jsx");
+fs.mkdirSync(path.dirname(buildEntry), { recursive: true });
+fs.writeFileSync(
+  buildEntry,
+  'export const App = () => <main><button type="button">hello</button></main>;\n',
+  "utf8",
+);
+
+const DEV_LEAKS = [
+  "data-ttc",
+  "virtual:tab-to-components/client",
+  "__TTC_CONFIG__",
+  "__TTC_READY__",
+  "__TTC_INSTALLED__",
+];
+
+function flattenBuildOutput(result) {
+  const bundles = Array.isArray(result) ? result : [result];
+  const parts = [];
+  for (const bundle of bundles) {
+    if (!bundle || typeof bundle !== "object" || !Array.isArray(bundle.output)) {
+      continue;
+    }
+    for (const item of bundle.output) {
+      if (item?.type === "chunk" && typeof item.code === "string") {
+        parts.push(item.code);
+      } else if (item?.type === "asset") {
+        parts.push(
+          typeof item.source === "string"
+            ? item.source
+            : Buffer.from(item.source).toString("utf8"),
+        );
+      }
+    }
+  }
+  return parts;
+}
+
+function checkNoDevLeak(label, parts) {
+  const code = parts.join("\n");
+  const leaked = DEV_LEAKS.find((marker) => code.includes(marker));
+  check(
+    `${label} production build has output and no dev runtime`,
+    parts.length > 0 && leaked === undefined,
+    leaked
+      ? `build output contains ${JSON.stringify(leaked)}`
+      : "build produced no inspectable chunks",
+  );
+}
+
+function forceIntoBuild(plugin) {
+  const copy = { ...plugin };
+  delete copy.apply;
+  return copy;
+}
+
+async function buildConsumer(entry, plugins) {
+  const { build } = await import("vite");
+  return build({
+    root: consumerDir,
+    configFile: false,
+    logLevel: "silent",
+    plugins,
+    build: {
+      write: false,
+      minify: false,
+      lib: { entry, formats: ["es"], fileName: "bundle" },
+    },
+  });
+}
+
+checkNoDevLeak(
+  "apply-serve-filtered",
+  flattenBuildOutput(
+    await buildConsumer(buildEntry, [
+      reactPlugin(),
+      packed.tabToComponents({ log: false }),
+    ]),
+  ),
+);
+
+checkNoDevLeak(
+  "forced-into-build",
+  flattenBuildOutput(
+    await buildConsumer(buildEntry, [
+      reactPlugin(),
+      forceIntoBuild(packed.tabToComponents({ log: false })),
+    ]),
+  ),
+);
+
+const virtualEntry = path.join(consumerDir, "src", "virtual.js");
+fs.writeFileSync(
+  virtualEntry,
+  'import "virtual:tab-to-components/client";\nexport const value = 1;\n',
+  "utf8",
+);
+let virtualBuildFailed = false;
+let virtualBuildMessage = "";
+try {
+  await buildConsumer(virtualEntry, [
+    reactPlugin(),
+    forceIntoBuild(packed.tabToComponents({ log: false })),
+  ]);
+} catch (error) {
+  virtualBuildFailed = true;
+  virtualBuildMessage = String(error?.message ?? error);
+}
+check(
+  "production build cannot resolve the dev client module",
+  virtualBuildFailed &&
+    /virtual:tab-to-components\/client|could not resolve|failed to resolve/i.test(
+      virtualBuildMessage,
+    ),
+  virtualBuildFailed ? virtualBuildMessage.slice(0, 200) : "build unexpectedly resolved it",
+);
 
 // ---------------------------------------------------------------------------
 console.log(
