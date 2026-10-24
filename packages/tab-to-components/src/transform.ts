@@ -59,6 +59,15 @@ const BASE_PLUGINS: ParserPlugin[] = [
 ];
 
 const TS_EXTENSIONS = new Set([".ts", ".tsx", ".mts", ".cts"]);
+/**
+ * `.ts` / `.mts` / `.cts` cannot legally contain JSX, and enabling the `jsx`
+ * plugin would reject valid angle-bracket type assertions (`<string>value`).
+ */
+const TS_NO_JSX_EXTENSIONS = new Set([".ts", ".mts", ".cts"]);
+/** Same plugin set as `BASE_PLUGINS` minus `jsx`. */
+const BASE_PLUGINS_WITHOUT_JSX: ParserPlugin[] = BASE_PLUGINS.filter(
+  (plugin) => plugin !== "jsx",
+);
 const JSX_EXTENSIONS = new Set([".jsx", ".tsx"]);
 
 export interface TransformSourceOptions {
@@ -79,6 +88,9 @@ interface JsxOpeningElement extends AstNode {
     name?: string;
   };
   attributes: Array<{ end?: number | null }>;
+  /** `<Foo<string> />`: Babel 7 names it `typeParameters`, Babel 8 `typeArguments`. */
+  typeParameters?: { end?: number | null } | null;
+  typeArguments?: { end?: number | null } | null;
   loc?: { start: { line: number; column: number } } | null;
 }
 
@@ -111,7 +123,9 @@ export function parseModule(
   const ext = path.extname(filename).toLowerCase();
   const parse = getParse();
   const pluginSets: ParserPlugin[][] = [];
-  if (TS_EXTENSIONS.has(ext)) {
+  if (TS_NO_JSX_EXTENSIONS.has(ext)) {
+    pluginSets.push([...BASE_PLUGINS_WITHOUT_JSX, "typescript"]);
+  } else if (TS_EXTENSIONS.has(ext)) {
     pluginSets.push([...BASE_PLUGINS, "typescript"]);
   } else {
     pluginSets.push([...BASE_PLUGINS, "typescript"], [...BASE_PLUGINS, "flow"]);
@@ -203,7 +217,11 @@ export function transformSource(
       if (!start || nameNode.start == null || nameNode.end == null) return;
 
       const lastAttribute = element.attributes[element.attributes.length - 1];
-      const insertAt = lastAttribute?.end ?? nameNode.end;
+      const insertAt =
+        lastAttribute?.end ??
+        element.typeParameters?.end ??
+        element.typeArguments?.end ??
+        nameNode.end;
       if (typeof insertAt !== "number") return;
 
       const location = `${options.relPath}:${start.line}:${start.column + 1}`;
@@ -235,17 +253,25 @@ export function transformSource(
     if (program) {
       const firstStatement = program.body[0];
       let insertAt: number;
+      let needsLineBreak = false;
       if (firstStatement?.start != null) {
         insertAt = firstStatement.start;
       } else {
         const lastDirective = program.directives?.[program.directives.length - 1];
         insertAt = lastDirective?.end ?? code.length;
+        // Nothing follows: after a directive, a trailing line comment or a
+        // shebang there is no statement boundary, so the import needs its own
+        // line (ASI plus not being swallowed by a line comment).
+        needsLineBreak = true;
       }
       const declaration = `import ${JSON.stringify(overlayImport)};\n`;
       if (insertAt <= 0) {
         magic.prepend(declaration);
       } else {
-        magic.appendLeft(insertAt, declaration);
+        magic.appendLeft(
+          insertAt,
+          needsLineBreak ? `\n${declaration}` : declaration,
+        );
       }
       changed = true;
     }

@@ -12,3 +12,4 @@ playground/**/dist/
 # Local demo apps for manual testing (Mantine + raw React Router). Installed as
 # workspace members but intentionally kept out of version control.
 examples/
+PUBLISHING.md

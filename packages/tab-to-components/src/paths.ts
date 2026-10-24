@@ -50,14 +50,17 @@ export function toFilePath(id: string, root: string): string | undefined {
 
   if (file.startsWith("/@fs/")) {
     file = file.slice("/@fs/".length);
-    // Windows drive letters arrive as `/D:/...`
-    if (/^\/[A-Za-z]:\//.test(file)) file = file.slice(1);
+    // Vite serves absolute paths as `/@fs/<absolute path>`. Windows keeps its
+    // drive prefix (`/@fs/C:/x`); POSIX loses the leading slash (`/@fs/home/`).
+    if (/^\/?[A-Za-z]:\//.test(file)) file = file.replace(/^\//, "");
+    else if (path.sep === "/" && !file.startsWith("/")) file = `/${file}`;
   } else if (file.startsWith("/@id/")) {
     return undefined;
   } else if (/^\/[A-Za-z]:\//.test(file)) {
     file = file.slice(1);
-  } else if (file.startsWith("/")) {
-    // Root-relative URL, e.g. `/app/routes/home.tsx`
+  } else if (path.sep === "\\" && file.startsWith("/")) {
+    // Root-relative URL on Windows, e.g. `/app/routes/home.tsx`. On POSIX a
+    // leading slash is an absolute filesystem path and must fall through.
     return path.resolve(root, `.${file}`).replace(/\\/g, "/");
   }
 

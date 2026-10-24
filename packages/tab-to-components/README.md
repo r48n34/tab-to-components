@@ -218,7 +218,7 @@ Verified in the project's test suite against real dev servers, SSR renders, prod
 | React Router | **7.18.4** framework mode on Vite 7.3.7 **and** Vite 8.3.5; **8.5.0** framework mode on Vite 8.3.5 |
 | Vite | **7.3.7** and **8.3.5** |
 | React | **19.3.1** |
-| `@vitejs/plugin-react` | 5.1.4 on Vite 7, 6.1.2 on Vite 8 (both plugin orders) |
+| `@vitejs/plugin-react` | 5.2.0 on Vite 7, 6.1.2 on Vite 8 (both plugin orders) |
 | Editors | **VS Code (`code`) by default**; presets for the VS Code family (incl. **Cursor/Trae**), JetBrains, Zed, Sublime, Vim, Emacs; command templates and custom launcher functions; `editor: "auto"` for Vite's `launch-editor` auto-detection |
 
 Vite 6 is inside the peer range but untested — use Vite 7+ to be safe.

@@ -227,11 +227,15 @@ export function install(userConfig?: Partial<ClientConfig> | null): () => void {
       event.stopPropagation();
       return;
     }
+    // Escape always disarms, even while the modifier is still held.
+    if (event.key === "Escape") {
+      disarm();
+      return;
+    }
     if (isModifierHeld(event, config.keyboard)) {
       armed = true;
       return;
     }
-    if (event.key === "Escape") disarm();
   };
 
   const onKeyUp: EventListener = (rawEvent) => {
@@ -269,8 +273,10 @@ export function install(userConfig?: Partial<ClientConfig> | null): () => void {
     if (overlay.isMenuOpen) {
       if (overlay.containsEvent(event)) return;
       overlay.closeMenu();
-      // The click that follows this mousedown only dismisses the menu.
-      suppressNextClick = true;
+      // The click that follows this mousedown only dismisses the menu. Only a
+      // primary-button press produces a `click`, so arming the flag for other
+      // buttons would swallow the next real click instead.
+      if (event.button === 0) suppressNextClick = true;
       return;
     }
     if (!isModifierHeld(event, config.keyboard)) return;

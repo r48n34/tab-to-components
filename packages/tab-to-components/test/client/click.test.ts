@@ -191,7 +191,9 @@ describe("modifier + click", () => {
       const outline = shadow.querySelector<HTMLElement>(".ttc-outline");
       const label = shadow.querySelector<HTMLElement>(".ttc-label");
       expect(outline?.style.display).toBe("block");
-      expect(label?.style.display).toBe("block");
+      // The label is a flex container so its `gap`/`align-items` and the
+      // ellipsis on the path actually apply.
+      expect(label?.style.display).toBe("flex");
       expect(label?.textContent).toBe("<Button />  app/routes/home.tsx:19:7");
     });
   });
@@ -333,6 +335,31 @@ describe("component chain menu", () => {
     expect(shadowRoot().querySelector<HTMLElement>(".ttc-menu")?.style.display).toBe(
       "none",
     );
+  });
+
+  it("does not swallow the next click after a right-button menu dismissal", async () => {
+    setConfig();
+    const button = mountReactButton();
+    install();
+
+    pressAlt();
+    mouseEvent("contextmenu", button, { altKey: true });
+    expect(
+      shadowRoot().querySelector<HTMLElement>(".ttc-menu")?.style.display,
+    ).toBe("block");
+
+    // A right-button press outside the menu closes it and produces no `click`,
+    // so it must not arm click suppression for the next real click.
+    mouseEvent("mousedown", document.body, { button: 2 });
+    expect(
+      shadowRoot().querySelector<HTMLElement>(".ttc-menu")?.style.display,
+    ).toBe("none");
+
+    const { click } = altClick(button);
+    expect(click.defaultPrevented).toBe(true);
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("does nothing on right-click when the menu is disabled", () => {

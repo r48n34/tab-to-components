@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { transformSource } from "../src/transform.js";
+import { parseModule, transformSource } from "../src/transform.js";
 
 const FILE = "D:/proj/app/App.tsx";
 const REL = "app/App.tsx";
@@ -162,5 +162,47 @@ describe("file types and syntax", () => {
   it("returns undefined for code that does not parse", () => {
     expect(run("const a = <div ;\n")).toBeUndefined();
     expect(run("class {")).toBeUndefined();
+  });
+});
+describe("jsx generic type arguments", () => {
+  it("inserts the marker after <Foo<string>> so the output still parses", () => {
+    const code = "const a = <Foo<string> />;\n";
+    const out = run(code)?.code ?? "";
+    expect(out).toContain("<Foo<string> data-ttc=");
+    expect(parseModule(out, FILE)).toBeTruthy();
+  });
+
+  it("keeps type arguments ahead of the marker when children follow", () => {
+    const code = "const a = <Foo<string>>text</Foo>;\n";
+    const out = run(code)?.code ?? "";
+    expect(out).toContain("<Foo<string> data-ttc=");
+    expect(parseModule(out, FILE)).toBeTruthy();
+  });
+});
+
+describe("overlay import in statement-less modules", () => {
+  const OVERLAY = "virtual:tab-to-components/client";
+
+  it("keeps a directive-only module parseable", () => {
+    const code = '"use client"\n';
+    const out =
+      transformSource(code, FILE, {
+        relPath: REL,
+        marker: true,
+        overlayImport: OVERLAY,
+      })?.code ?? "";
+    expect(out).toContain(`import "${OVERLAY}"`);
+    expect(parseModule(out, FILE)).toBeTruthy();
+  });
+
+  it("parses .ts angle-bracket assertions and still loads the overlay", () => {
+    const code = "const value = <string>input;\n";
+    const out =
+      transformSource(code, "D:/proj/app/a.ts", {
+        relPath: "app/a.ts",
+        marker: true,
+        overlayImport: OVERLAY,
+      })?.code ?? "";
+    expect(out).toContain(`import "${OVERLAY}"`);
   });
 });

@@ -261,8 +261,8 @@ export class Overlay {
     return !this.destroyed && this.host.isConnected;
   }
 
-  private show(el: HTMLElement): void {
-    el.style.display = "block";
+  private show(el: HTMLElement, display: "block" | "flex" = "block"): void {
+    el.style.display = display;
   }
 
   private hide(el: HTMLElement): void {
@@ -282,7 +282,9 @@ export class Overlay {
     this.labelName.textContent = formatNameLabel(state.name);
     this.labelSource.textContent = state.source;
     this.labelSource.style.display = state.source === "" ? "none" : "";
-    this.show(this.label);
+    // flex (not block) so the CSS `gap`/`align-items` and the ellipsis on the
+    // path actually apply.
+    this.show(this.label, "flex");
     const offset = 16;
     const margin = 8;
     const viewportWidth = typeof window !== "undefined" ? window.innerWidth : 0;
