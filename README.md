@@ -17,20 +17,6 @@ Alt + click the "count is 0" button  →
 - **Opens VS Code by default**; `editor: "cursor" | "trae" | "webstorm" | …`, a command template, a launcher function, or `"auto"` for auto-detection.
 - Never ships to production: no markers, no client code, no extra imports in `vite build` / `react-router build`.
 
-## Dev-only by construction
-
-`tab-to-components` is a development tool, not a runtime dependency. Its dev-only behaviour is enforced in layers:
-
-| Layer | Guarantee |
-| --- | --- |
-| `apply: "serve"` | Vite removes the plugin from `vite build` / `react-router build` before any hook runs. |
-| Hook-level command guard | If a wrapper re-registers the plugin without `apply`, `configResolved`, `transform`, `resolveId`, `load` and `configureServer` all stay inert for a build command. No marker, no virtual import and no browser runtime can be emitted. |
-| Virtual module guard | `virtual:tab-to-components/client` only resolves from a running dev server. A production build that imports it fails to resolve instead of bundling the overlay. |
-| Package exports | `dist/client.js` is served by the dev server but is not an importable package subpath. |
-| Regression gates | `pnpm test:dev-only` covers the contract; the integration suite builds plain Vite and React Router 7/8 apps and scans output for `data-ttc`, the virtual module id and the `__TTC_*` globals; `pnpm verify:package` reruns the production-build checks against the exact packed artifact. |
-
-Install it with `-D` and keep it in `vite.config.ts`; never import it from application code.
-
 ## Install
 
 ```bash
@@ -260,6 +246,20 @@ Nothing is injected. The plugin is `apply: "serve"`, and every hook independentl
 - Markers are dev-only `data-ttc` / `data-ttc-name` attributes: they are visible in dev HTML and the DOM, and never in production output.
 
 ---
+
+## Dev-only by construction
+
+`tab-to-components` is a development tool, not a runtime dependency. Its dev-only behaviour is enforced in layers:
+
+| Layer | Guarantee |
+| --- | --- |
+| `apply: "serve"` | Vite removes the plugin from `vite build` / `react-router build` before any hook runs. |
+| Hook-level command guard | If a wrapper re-registers the plugin without `apply`, `configResolved`, `transform`, `resolveId`, `load` and `configureServer` all stay inert for a build command. No marker, no virtual import and no browser runtime can be emitted. |
+| Virtual module guard | `virtual:tab-to-components/client` only resolves from a running dev server. A production build that imports it fails to resolve instead of bundling the overlay. |
+| Package exports | `dist/client.js` is served by the dev server but is not an importable package subpath. |
+| Regression gates | `pnpm test:dev-only` covers the contract; the integration suite builds plain Vite and React Router 7/8 apps and scans output for `data-ttc`, the virtual module id and the `__TTC_*` globals; `pnpm verify:package` reruns the production-build checks against the exact packed artifact. |
+
+Install it with `-D` and keep it in `vite.config.ts`; never import it from application code.
 
 ## Development
 
