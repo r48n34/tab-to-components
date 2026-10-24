@@ -1,0 +1,20 @@
+{
+  "name": "tab-to-components-monorepo",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.28.5",
+  "scripts": {
+    "build": "pnpm --filter tab-to-components build",
+    "dev:lib": "pnpm --filter tab-to-components dev",
+    "typecheck": "pnpm --filter tab-to-components typecheck",
+    "test": "pnpm build && pnpm --filter tab-to-components test",
+    "test:integration": "pnpm build && pnpm --filter tab-to-components test:integration",
+    "test:matrix": "pnpm build && pnpm --filter tab-to-components test:matrix",
+    "verify:package": "pnpm build && pnpm --filter tab-to-components verify:package",
+    "e2e": "pnpm build && node scripts/e2e.mjs",
+    "gate": "pnpm build && pnpm typecheck && pnpm --filter tab-to-components test && pnpm test:integration && pnpm test:matrix && pnpm verify:package"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  }
+}

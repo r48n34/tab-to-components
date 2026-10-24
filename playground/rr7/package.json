@@ -1,0 +1,24 @@
+{
+  "name": "playground-rr7",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "react-router dev",
+    "build": "react-router build"
+  },
+  "dependencies": {
+    "@react-router/node": "^7.18.4",
+    "isbot": "^5.1.40",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-router": "^7.18.4",
+    "tab-to-components": "workspace:*"
+  },
+  "devDependencies": {
+    "@react-router/dev": "^7.18.4",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "typescript": "5.9.3",
+    "vite": "^8.3.5"
+  }
+}

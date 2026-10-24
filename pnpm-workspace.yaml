@@ -1,0 +1,32 @@
+packages:
+  - "packages/*"
+  - "playground/*"
+  # Local, git-ignored demo apps (see .gitignore). They are workspace members so
+  # `pnpm install` at the root links the plugin into them, but they are never
+  # committed.
+  - "examples/*"
+
+# Keep every pnpm artifact inside the workspace so installs work in sandboxed
+# environments where the user profile directory is not writable.
+storeDir: .pnpm-store
+cacheDir: .pnpm-cache
+stateDir: .pnpm-state
+packageManagerStrict: false
+strictPeerDependencies: false
+autoInstallPeers: true
+
+# The Windows sandbox used to develop this repo cannot follow reparse points, so
+# Node's ESM resolver fails on pnpm's default symlinked layout. A hoisted layout
+# gives plain directories that resolve everywhere.
+nodeLinker: hoisted
+
+# pnpm 11 requires a decision before a dependency may run install scripts.
+# esbuild's postinstall is denied: its prebuilt platform binary ships in the
+# optional @esbuild/win32-x64 package, so the postinstall is not needed here.
+allowBuilds:
+  esbuild: false
+
+minimumReleaseAgeExclude:
+  - "@babel/helper-string-parser@7.29.11"
+  - "@babel/parser@7.29.11"
+  - "@babel/types@7.29.11"

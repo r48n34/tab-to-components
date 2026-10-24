@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Build, type-check, test and package check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build, type-check, unit + integration + Vite matrix + package verification
+        run: pnpm gate
+
+  # The end-to-end suite drives a real browser. It runs locally with
+  # `pnpm e2e`; enable this job if you want it in CI (the runner ships Chrome).
+  # e2e:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: pnpm/action-setup@v4
+  #       with: { version: 11 }
+  #     - uses: actions/setup-node@v4
+  #       with: { node-version: 22, cache: pnpm }
+  #     - run: pnpm install --frozen-lockfile
+  #     - run: CHROME_PATH=/usr/bin/google-chrome pnpm e2e

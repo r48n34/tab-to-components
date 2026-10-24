@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.pnpm-store/
+.pnpm-cache/
+.pnpm-state/
+.tmp/
+*.log
+playground/**/build/
+playground/**/.react-router/
+playground/**/dist/
+
+# Local demo apps for manual testing (Mantine + raw React Router). Installed as
+# workspace members but intentionally kept out of version control.
+examples/

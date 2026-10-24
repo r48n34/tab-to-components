@@ -1,0 +1,47 @@
+name: Publish to npm
+
+# Publishes packages/tab-to-components when a version tag (v1.2.3) is pushed.
+#
+# One-time setup:
+#   1. Add an npm automation token as the repository secret NPM_TOKEN.
+#   2. Fill in `repository`/`homepage`/`bugs` in the package.json (npm links them
+#      from the published package and they are required for provenance).
+#   3. Tag the commit: git tag v0.1.0 && git push origin v0.1.0
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  id-token: write # allows `npm publish --provenance` once the repository field is set
+
+jobs:
+  publish:
+    name: Publish package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify
+        run: pnpm gate
+
+      - name: Publish
+        working-directory: packages/tab-to-components
+        # `prepublishOnly` rebuilds dist/ before the tarball is created.
+        # Add `--provenance` once `repository` points at this GitHub repo.
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
