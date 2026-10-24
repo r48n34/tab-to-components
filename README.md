@@ -14,7 +14,7 @@ Alt + click the "count is 0" button  →
 <Button />   app/routes/home.tsx:20:9     ← opened in your editor
 ```
 
-![Hovering the count button: the overlay outlines it and shows the Button component's source location, src/App.tsx:20:9](https://raw.githubusercontent.com/r48n34/tab-to-components/main/docs/demo-hover.png)
+![Hovering the count button: the overlay outlines it and shows the Button component's source location, src/App.tsx:20:9](https://github.com/r48n34/tab-to-components/raw/main/docs/demo-hover.png)
 
 - Zero app-code changes — no `entry.client.tsx` edit, no root route edit, no React runtime patching.
 - Works in `react-router dev` (SSR, streaming, SPA mode) **and** plain Vite.
@@ -81,7 +81,7 @@ Same one-liner as plain Vite — `createBrowserRouter` + `RouterProvider` apps o
 
 The app's own click handler is **not** triggered (the plugin suppresses it in the capture phase), and no overlay DOM is added except one `<div data-ttc-ui>` shadow root with `pointer-events: none`.
 
-![Alt+right-click opens the component chain picker, listing each marked JSX ancestor and its source file](https://raw.githubusercontent.com/r48n34/tab-to-components/main/docs/demo-menu.png)
+![Alt+right-click opens the component chain picker, listing each marked JSX ancestor and its source file](https://github.com/r48n34/tab-to-components/raw/main/docs/demo-menu.png)
 
 ```
 data-ttc        "<project relative path>:<line>:<column>"  (1-based)
