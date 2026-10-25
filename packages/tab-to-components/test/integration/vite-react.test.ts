@@ -48,6 +48,9 @@ describe("plain Vite + @vitejs/plugin-react", () => {
     const code = await response.text();
     expect(code).toContain("globalThis.__TTC_CONFIG__");
     expect(code).toContain('"open":"component"');
+    expect(code).toContain(
+      '"clickActions":["open","copy-file","copy-full-path"]',
+    );
     // Default editor is VS Code, served by the plugin's own endpoint.
     expect(code).toContain('"editorEndpoint":"__ttc/open-in-editor"');
     expect(code).toContain(PLAYGROUND.replace(/\\/g, "/"));

@@ -10,10 +10,14 @@
 import type { ClientConfig } from "./config";
 import { install } from "./install";
 
+export type { SourceActionCopy } from "./actions";
+export { sourceActionCopy, sourceActionDetail, sourceActionLabel } from "./actions";
 export type { ChainEntry } from "./chain";
 export { entryFromElement, getComponentChain, nearestComponentEntry, pickPrimaryEntry } from "./chain";
-export type { ClientConfig, ModifierKey, OpenMode } from "./config";
-export { DEFAULT_CONFIG, resolveConfig } from "./config";
+export type { ClipboardLike, CopyTextOptions } from "./clipboard";
+export { copyText } from "./clipboard";
+export type { ClickAction, ClientConfig, ModifierKey, OpenMode, ThemeMode } from "./config";
+export { DEFAULT_CLICK_ACTIONS, DEFAULT_CONFIG, resolveConfig } from "./config";
 export type { EditorTarget, EditorUrlConfig, EditorUrlInput, FetchLike, OpenInEditorOptions } from "./editor";
 export {
   buildEditorUrl,
@@ -34,7 +38,14 @@ export {
 export type { ModifierState } from "./install";
 export { install, isModifierHeld, uninstall } from "./install";
 export type { LabelInput, SourceMarker } from "./marker";
-export { formatEntryLabel, formatMarker, formatNameLabel, parseMarker } from "./marker";
+export {
+  fileNameOf,
+  formatEntryLabel,
+  formatMarker,
+  formatNameLabel,
+  parseMarker,
+  resolveFullPath,
+} from "./marker";
 
 interface TtcEntryGlobals {
   __TTC_CONFIG__?: ClientConfig | undefined;

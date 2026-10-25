@@ -3,22 +3,17 @@
 [![npm version](https://img.shields.io/npm/v/tab-to-components.svg)](https://www.npmjs.com/package/tab-to-components)
 [![CI](https://github.com/r48n34/tab-to-components/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/r48n34/tab-to-components/actions/workflows/ci.yml)
 
-**Alt+click any React element in your dev server and jump straight to the JSX that rendered it.**
+**Alt+click any React element in your dev server: jump to the JSX that rendered it, or copy its file name to the clipboard.**
 
-A dev-only Vite plugin for the modern React stack: **React 19**, **Vite 7 & 8**, and **React Router v7 / v8 framework mode** — including streamed SSR, where the other click-to-component tools stopped working.
+A dev-only Vite plugin for the modern React stack: **React 18 & 19**, **Vite 6, 7 & 8**, **React Router v6 / v7 / v8**, **TanStack Start**, and **Remix v2** — including streamed SSR, where the other click-to-component tools stopped working.
 
-```
-Alt + click the "count is 0" button  →
-
-<button />   app/components/Button.tsx:6:10
-<Button />   app/routes/home.tsx:20:9     ← opened in your editor
-```
 
 ![Hovering the count button: the overlay outlines it and shows the Button component's source location, src/App.tsx:20:9](https://github.com/r48n34/tab-to-components/raw/main/docs/demo-hover.png)
 
 - Zero app-code changes — no `entry.client.tsx` edit, no root route edit, no React runtime patching.
-- Works in `react-router dev` (SSR, streaming, SPA mode) **and** plain Vite.
+- Works in `react-router dev` (SSR, streaming, SPA mode), TanStack Start, Remix v2 **and** plain Vite.
 - **Opens VS Code by default**; `editor: "cursor" | "trae" | "webstorm" | …`, a command template, a launcher function, or `"auto"` for auto-detection.
+- **Open or copy:** the Alt+click picker can open the source in your IDE or copy the file name (`MyBox.tsx`), the project-relative path, the full absolute path (`D:/proj/app/components/MyBox.tsx`), or `path:line:column` to the clipboard.
 - Never ships to production: no markers, no client code, no extra imports in `vite build` / `react-router build`.
 
 ## Install
@@ -62,9 +57,44 @@ export default defineConfig({
 });
 ```
 
-### React Router declarative / data mode (SPA)
+### React Router v6 (declarative / data mode, SPA)
 
-Same one-liner as plain Vite — `createBrowserRouter` + `RouterProvider` apps only need the plugin in `vite.config.ts`.
+Same one-liner as plain Vite — `react-router-dom` v6 apps (`BrowserRouter` / `createBrowserRouter` + `RouterProvider`) only need the plugin in `vite.config.ts`.
+
+### TanStack Start
+
+```ts
+// vite.config.ts
+import { tanstackStart } from "@tanstack/react-start/plugin/vite";
+import react from "@vitejs/plugin-react";
+import { defineConfig } from "vite";
+import { tabToComponents } from "tab-to-components";
+
+export default defineConfig({
+  plugins: [
+    tabToComponents(),
+    tanstackStart({ srcDirectory: "src" }),
+    react(),
+  ],
+});
+```
+
+The plugin runs before TanStack Start's route-module transform, so both the server-rendered markup and the client route modules carry source markers. The overlay runtime is injected into the client entry with no `entry.client.tsx` edit.
+
+### Remix v2 (Vite)
+
+```ts
+// vite.config.ts
+import { vitePlugin as remix } from "@remix-run/dev";
+import { defineConfig } from "vite";
+import { tabToComponents } from "tab-to-components";
+
+export default defineConfig({
+  plugins: [tabToComponents(), remix()],
+});
+```
+
+Remix v2 supports Vite 5/6 and React 18. Remix v1 uses its classic esbuild compiler, not Vite, so it is not supported by this plugin.
 
 > **Plugin order:** `tabToComponents()` works before or after other JSX-transforming plugins (it has a compiled-JSX fallback). The one exception is `@vitejs/plugin-react` **4.x on Vite 7**, which prepends its HMR preamble before the JSX transform and shifts the positions it reports — use `@vitejs/plugin-react` ≥ 5.1 there, or put `tabToComponents()` first.
 
@@ -75,11 +105,13 @@ Same one-liner as plain Vite — `createBrowserRouter` + `RouterProvider` apps o
 | Action | Result |
 | --- | --- |
 | Hold <kbd>Alt</kbd> + move the mouse | The element under the cursor is outlined; a label shows `<Component />` and `file:line:column`. |
-| <kbd>Alt</kbd> + left click | Opens the **nearest component usage site** (e.g. the `<Button />` line in your page) in your editor. Falls back to the clicked element when it was rendered directly. |
+| <kbd>Alt</kbd> + left click | Opens the **source action picker** for the nearest component usage site (e.g. the `<Button />` line in your page): **Open in IDE**, **Copy file name** (`MyBox.tsx`) or **Copy full path** (`D:/proj/app/components/MyBox.tsx`). Falls back to the clicked element when it was rendered directly. |
 | <kbd>Alt</kbd> + right click | Opens the **component chain picker** listing every marked JSX ancestor (`<button />`, `<Button />`, `<Card />`, …). Click a row, or use <kbd>↑</kbd>/<kbd>↓</kbd>/<kbd>Enter</kbd>, <kbd>Esc</kbd> to close. |
-| After opening | A short toast confirms the file that was opened. |
+| After an action | A short toast confirms the file that was opened or the text that was copied. |
 
-The app's own click handler is **not** triggered (the plugin suppresses it in the capture phase), and no overlay DOM is added except one `<div data-ttc-ui>` shadow root with `pointer-events: none`.
+Configuring a **single** action skips the picker and runs it immediately — `clickActions: ["open"]` keeps the pre-0.4 instant-open behavior (see [Copy source paths](#copy-source-paths)).
+
+The app's own click handler is **not** triggered (the plugin suppresses it in the capture phase), and no overlay DOM is added except one `<div data-ttc-ui>` shadow root with `pointer-events: none`. The overlay is **dark by default**; set `theme: "light"` to match a light app (see [Theme](#theme)).
 
 ![Alt+right-click opens the component chain picker, listing each marked JSX ancestor and its source file](https://github.com/r48n34/tab-to-components/raw/main/docs/demo-menu.png)
 
@@ -90,13 +122,71 @@ data-ttc-name   JSX tag name, e.g. "Button"                (component elements o
 
 ---
 
+## Copy source paths
+
+By default the Alt+click picker offers **Open in IDE**, **Copy file name** and **Copy full path**. “Copy file name” writes the bare file (`MyBox.tsx`) for a chat message or an issue; “Copy full path” writes the absolute path built from the Vite project root (`D:/proj/app/components/MyBox.tsx`) for a terminal or a script:
+
+```
+<Button />   app/components/MyBox.tsx:12:5
+             → Copy file name         MyBox.tsx
+             → Copy full path         D:/proj/app/components/MyBox.tsx
+             → Copy relative path     app/components/MyBox.tsx
+             → Copy file:line:column  app/components/MyBox.tsx:12:5
+```
+
+Choose which copy actions the picker offers with `clickActions` (order is preserved):
+
+```ts
+tabToComponents({
+  // Default: open the editor, copy the file name or copy the full path.
+  clickActions: ["open", "copy-file", "copy-full-path"],
+
+  // Add every copy variant, including the project-relative path and location.
+  // clickActions: ["open", "copy-file", "copy-full-path", "copy-path", "copy-location"],
+
+  // One action skips the picker entirely: instant open, the pre-0.4 behavior.
+  // clickActions: ["open"],
+
+  // Copy-only: Alt+click never opens the editor.
+  // clickActions: ["copy-full-path"],
+});
+```
+
+| Action | Clipboard content | Toast |
+| --- | --- | --- |
+| `"open"` | — (asks the dev server to open the source in your editor) | `Opened <Button /> app/routes/home.tsx:19:7` |
+| `"copy-file"` | `MyBox.tsx` | `Copied file name: MyBox.tsx` |
+| `"copy-path"` | `app/components/MyBox.tsx` | `Copied path: app/components/MyBox.tsx` |
+| `"copy-full-path"` | `D:/proj/app/components/MyBox.tsx` | `Copied full path: D:/proj/app/components/MyBox.tsx` |
+| `"copy-location"` | `app/components/MyBox.tsx:12:5` | `Copied location: app/components/MyBox.tsx:12:5` |
+
+The picker supports the mouse and the keyboard (<kbd>↑</kbd>/<kbd>↓</kbd>, <kbd>Home</kbd>/<kbd>End</kbd>, <kbd>Enter</kbd>/<kbd>Space</kbd>, <kbd>Esc</kbd>). Every row refers to the **same source location** the row would open — the nearest component usage site, or the clicked element for `open: "element"`; use <kbd>Alt</kbd>+right click to reach another marked ancestor. “Copy full path” joins the injected Vite project root with the marker path, so it is the path on the **dev-server machine** (a container/WSL/SSH path if the server runs there). Copying uses `navigator.clipboard.writeText` on localhost and falls back to `document.execCommand("copy")` when the Clipboard API is unavailable; if both fail the toast shows the text so it can be copied manually. `clickActions` is ignored when `open: "menu"` is used — that mode keeps the component chain picker on left click.
+
+---
+
+## Theme
+
+The overlay is **dark by default** — the original blue-on-black UI. For a light app, pass `theme: "light"`: the hover label, both pickers and the toasts switch to white surfaces with darker blue accents, so the text keeps its contrast on light backgrounds.
+
+```ts
+tabToComponents({
+  theme: "light", // default: "dark"
+});
+```
+
+The choice is rendered as a `data-ttc-theme` attribute on the `[data-ttc-ui]` host together with CSS custom properties inside its shadow root, so it cannot leak into the app's own styles and the app's CSS cannot restyle the overlay.
+
+---
+
 ## Options
 
 ```ts
 tabToComponents({
   keyboard: "alt",
   open: "component",
+  clickActions: ["open", "copy-file", "copy-full-path"],
   menu: true,
+  theme: "dark",               // "dark" (default) or "light"
   overlay: "all",
   ssr: true,
   editor: "code",              // default: VS Code; "cursor", "trae", { command, args }, fn
@@ -111,7 +201,9 @@ tabToComponents({
 | --- | --- | --- |
 | `keyboard` | `"alt"` | Modifier key(s) that arm the inspector: `"alt"`, `"ctrl"`, `"meta"`, `"shift"`, or an array (all must be held). |
 | `open` | `"component"` | What a modifier + click opens: `"component"` = nearest component usage site (with fallback), `"element"` = the clicked element's own JSX site, `"menu"` = show the picker instead. |
+| `clickActions` | `["open", "copy-file", "copy-full-path"]` | Rows of the modifier + left-click source action picker, in order: `"open"`, `"copy-file"`, `"copy-path"`, `"copy-full-path"`, `"copy-location"` (or a single value). One action skips the picker. Ignored for `open: "menu"`. See [Copy source paths](#copy-source-paths). |
 | `menu` | `true` | Enable the modifier + right-click chain picker. |
+| `theme` | `"dark"` | Color theme of the overlay: `"dark"` (the original blue-on-black UI) or `"light"` (white surfaces with darker blue accents for contrast). See [Theme](#theme). |
 | `overlay` | `"all"` | `"all"` injects the browser runtime through client modules (works in every framework, including React Router's streamed SSR). `"entry"` only injects it into `entry.client.*` modules. `false` disables the runtime (markers only). |
 | `ssr` | `true` | Also annotate server-rendered markup, keeping server and client props identical during hydration. Set `false` if you snapshot SSR HTML. |
 | `include` / `exclude` | — | RegExp or RegExp[] matched against project-relative paths. `node_modules`, `dist`, `build`, `.react-router` and `public` are always excluded. |
@@ -199,17 +291,23 @@ If the editor cannot be launched, the terminal receives the error and a toast in
 
 ## Compatibility
 
-Verified in the project's test suite against real dev servers, SSR renders, production builds and headless-Chrome Alt+clicks:
+Verified against real dev servers, SSR renders, production builds and headless-Chrome Alt+clicks. The full 7-framework × 2-React evidence table, per-check results and resolved versions live in [docs/compatibility-matrix.md](https://github.com/r48n34/tab-to-components/blob/main/docs/compatibility-matrix.md); regenerate it with `pnpm test:compat:full`.
 
-| | Tested |
+| | Verified |
 | --- | --- |
-| React Router | **7.18.4** framework mode on Vite 7.3.7 **and** Vite 8.3.5; **8.5.0** framework mode on Vite 8.3.5 |
-| Vite | **7.3.7** and **8.3.5** |
-| React | **19.3.1** |
-| `@vitejs/plugin-react` | 5.2.0 on Vite 7, 6.1.2 on Vite 8 (both plugin orders) |
+| React | **18.3.1** and **19.3.1** |
+| Vite | **8.3.5** on the Vite / React Router / TanStack Start rows; **7.3.7** through `pnpm test:matrix`; **6.4.5** through Remix v2 |
+| React Router | v6 **6.30.6** (SPA), v7 **7.18.4** and v8 **8.5.0** framework mode (SSR) |
+| TanStack Start | **1.169.4** (TanStack Router **1.170.46**) on Vite 8 |
+| Remix | v2 **2.17.5** on Vite 6 (React 18 only); v1 has no Vite integration |
+| `@vitejs/plugin-react` | **6.1.2** on Vite 8; 5.x for the Vite 7 suite |
 | Editors | **VS Code (`code`) by default**; presets for the VS Code family (incl. **Cursor/Trae**), JetBrains, Zed, Sublime, Vim, Emacs; command templates and custom launcher functions; `editor: "auto"` for Vite's `launch-editor` auto-detection |
 
-Vite 6 is inside the peer range but untested — use Vite 7+ to be safe.
+Known upstream constraints (not plugin bugs):
+
+- **React Router v8** declares `peer react >=19.2.7`, so **React 18 is not supported** there.
+- **Remix v2** declares `peer react ^18.0.0` and supports Vite 5/6, so **React 19 is not supported** there.
+- **Remix v1** uses a classic esbuild compiler, not Vite, so this Vite plugin cannot run in a Remix v1 app.
 
 ---
 
@@ -218,7 +316,7 @@ Vite 6 is inside the peer range but untested — use Vite 7+ to be safe.
 1. **Source markers.** An `enforce: "pre"` Vite transform parses app modules with `@babel/parser` and inserts `data-ttc="<path>:<line>:<column>"` (plus `data-ttc-name` on component elements) after the last JSX attribute. Edits go through `magic-string`, so formatting and source maps are preserved. It runs before React Router's own route-module transform, so framework mode still gets raw TSX.
 2. **Compiled-JSX fallback.** If another `pre` plugin compiled the module first, the plugin injects the same markers into the compiler's `jsxDEV(...)` calls (Babel and esbuild keep the original source object in development), so plugin order is not critical.
 3. **Overlay delivery.** React Router never calls `transformIndexHtml`, so a module import is the only mechanism that works for both `index.html` apps and streamed SSR: client modules get `import "virtual:tab-to-components/client"`, which publishes a config and evaluates a tiny dependency-free DOM runtime.
-4. **Resolution.** On click the runtime walks the React fiber tree (`__reactFiber$…` → `memoizedProps["data-ttc"]`) — the same stable technique React DevTools uses — and asks the dev server to open the chosen site. The dev server launches the configured editor (VS Code's `code` by default) through the plugin's `__ttc/open-in-editor` endpoint, or delegates to Vite's endpoint for `editor: "auto"`.
+4. **Resolution.** On click the runtime walks the React fiber tree (`__reactFiber$…` → `memoizedProps["data-ttc"]`) — the same stable technique React DevTools uses — and shows the source action picker. Choosing “Open in IDE” asks the dev server to open the chosen site; the dev server launches the configured editor (VS Code's `code` by default) through the plugin's `__ttc/open-in-editor` endpoint, or delegates to Vite's endpoint for `editor: "auto"`. The copy rows write the file name, relative path or `path:line:column` to the clipboard in the browser.
 
 ---
 
@@ -249,40 +347,11 @@ Nothing is injected. The plugin is `apply: "serve"`, and every hook independentl
 - **`array.map()` rows** open the JSX inside the callback — the only location that exists in the source — not the row's data.
 - **MDX and pre-compiled dependencies** are not instrumented; the component chain still includes the app-level usages that render them.
 - **React Server Components** (`react-router/rsc`) are best-effort in 0.1: markers work, the overlay is client-only.
+- **Remix v1** is not supported: it predates Remix's Vite integration and uses its classic esbuild compiler.
+- **React Router v8 + React 18** and **Remix v2 + React 19** are outside those frameworks' declared peer ranges, so the plugin does not claim them.
 - Markers are dev-only `data-ttc` / `data-ttc-name` attributes: they are visible in dev HTML and the DOM, and never in production output.
 
----
 
-## Dev-only by construction
-
-`tab-to-components` is a development tool, not a runtime dependency. Its dev-only behaviour is enforced in layers:
-
-| Layer | Guarantee |
-| --- | --- |
-| `apply: "serve"` | Vite removes the plugin from `vite build` / `react-router build` before any hook runs. |
-| Hook-level command guard | If a wrapper re-registers the plugin without `apply`, `configResolved`, `transform`, `resolveId`, `load` and `configureServer` all stay inert for a build command. No marker, no virtual import and no browser runtime can be emitted. |
-| Virtual module guard | `virtual:tab-to-components/client` only resolves from a running dev server. A production build that imports it fails to resolve instead of bundling the overlay. |
-| Package exports | `dist/client.js` is served by the dev server but is not an importable package subpath. |
-| Regression gates | `pnpm test:dev-only` covers the contract; the integration suite builds plain Vite and React Router 7/8 apps and scans output for `data-ttc`, the virtual module id and the `__TTC_*` globals; `pnpm verify:package` reruns the production-build checks against the exact packed artifact. |
-
-Install it with `-D` and keep it in `vite.config.ts`; never import it from application code.
-
-## Development
-
-This package lives in a pnpm workspace together with five playground apps (React Router v7/v8 on Vite 7/8 and plain Vite apps) used by the test suites.
-
-```bash
-pnpm install
-pnpm build            # tsc + rolldown -> dist/
-pnpm test             # unit tests (includes the dev-only contract suite)
-pnpm test:dev-only    # fast subset: dev-only guards, virtual module, editor middleware
-pnpm test:integration # Vite 8 dev servers, SSR, production builds, default VS Code + custom editor endpoints
-pnpm test:matrix      # Vite 7 dev servers, SSR, build and plugin orderings
-pnpm e2e              # headless Chrome Alt+click across all 5 playgrounds
-pnpm verify:package   # validates the packed npm artifact
-```
-
-Issues and pull requests are welcome.
 
 ---
 

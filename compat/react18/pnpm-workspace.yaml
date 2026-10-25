@@ -1,0 +1,20 @@
+packages:
+  - "apps/*"
+
+# This workspace is deliberately outside the root pnpm workspace: the root
+# pins React 19, and a hoisted node_modules cannot give two React majors to
+# libraries that peer-depend on React. Everything here uses React 18.
+storeDir: ../../.pnpm-store
+cacheDir: ../../.pnpm-cache
+stateDir: ../../.pnpm-state
+packageManagerStrict: false
+strictPeerDependencies: false
+autoInstallPeers: true
+nodeLinker: hoisted
+
+# Vite 6/7 apps in this workspace transform TypeScript with esbuild. The
+# sandbox this repo is developed in blocks spawn, so the install keeps the
+# same build-script policy as the root workspace.
+allowBuilds:
+  esbuild: false
+

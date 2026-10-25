@@ -15,6 +15,37 @@ export type InspectorKey = "alt" | "ctrl" | "meta" | "shift";
 export type TabToComponentsOpenMode = "component" | "element" | "menu";
 
 /**
+ * One action of the modifier + left-click picker.
+ *
+ * - `open`: open the source location in the editor (the pre-0.4 behavior).
+ * - `copy-file`: copy the bare file name, e.g. `MyBox.tsx`.
+ * - `copy-path`: copy the project-relative path, e.g. `app/components/MyBox.tsx`.
+ * - `copy-full-path`: copy the absolute path, e.g. `D:/proj/app/components/MyBox.tsx`.
+ * - `copy-location`: copy `path:line:column`.
+ */
+export type TabToComponentsClickAction =
+  | "open"
+  | "copy-file"
+  | "copy-path"
+  | "copy-full-path"
+  | "copy-location";
+
+/** Actions shown by default: open the editor, copy the file name or full path. */
+export const DEFAULT_CLICK_ACTIONS: readonly TabToComponentsClickAction[] = [
+  "open",
+  "copy-file",
+  "copy-full-path",
+];
+
+/**
+ * Color theme of the overlay UI.
+ *
+ * - `dark` (default): the original blue-on-black overlay.
+ * - `light`: a blue-on-white overlay for light apps and screenshots.
+ */
+export type TabToComponentsTheme = "dark" | "light";
+
+/**
  * A source location the dev server should open in the editor.
  * Emitted by the browser runtime, consumed by the editor launcher.
  */
@@ -68,10 +99,35 @@ export interface TabToComponentsOptions {
   open?: TabToComponentsOpenMode;
 
   /**
+   * Actions offered by the modifier + left-click picker, in order. By default
+   * the picker offers `"open"`, `"copy-file"` and `"copy-full-path"` so the
+   * developer can jump to the editor, copy `MyBox.tsx`, or copy
+   * `D:/proj/app/components/MyBox.tsx`. Pass a single action (or
+   * `clickActions: "open"`) to skip the picker and keep the instant-open
+   * behavior.
+   *
+   * Ignored when `open: "menu"` is used: that mode keeps the component chain
+   * picker on left click.
+   *
+   * @default ["open", "copy-file", "copy-full-path"]
+   */
+  clickActions?: TabToComponentsClickAction | TabToComponentsClickAction[];
+
+  /**
    * Show the component chain picker on modifier + right click.
    * @default true
    */
   menu?: boolean;
+
+  /**
+   * Color theme of the overlay, its labels, menus and toasts.
+   *
+   * The overlay is dark by default, matching the original design. Pass
+   * `"light"` for a light app: blue accents become darker for contrast and the
+   * surfaces turn white.
+   * @default "dark"
+   */
+  theme?: TabToComponentsTheme;
 
   /**
    * How the client runtime gets into the page. `all` injects a side-effect
@@ -132,7 +188,9 @@ export interface TabToComponentsOptions {
 export interface ResolvedOptions {
   keyboard: InspectorKey[];
   open: TabToComponentsOpenMode;
+  clickActions: TabToComponentsClickAction[];
   menu: boolean;
+  theme: TabToComponentsTheme;
   overlay: "all" | "entry" | false;
   ssr: boolean;
   include: RegExp[];
@@ -154,7 +212,9 @@ export interface ClientConfig {
   base: string;
   keyboard: InspectorKey[];
   open: TabToComponentsOpenMode;
+  clickActions: TabToComponentsClickAction[];
   menu: boolean;
+  theme: TabToComponentsTheme;
   editorEndpoint: string;
 }
 

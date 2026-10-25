@@ -9,7 +9,11 @@ const BASE_CONFIG: ClientConfig = {
   base: "/",
   keyboard: ["alt"],
   open: "component",
+  // These tests exercise the modifier / endpoint plumbing; the action picker
+  // itself is covered by click.test.ts.
+  clickActions: ["open"],
   menu: true,
+  theme: "dark",
   editorEndpoint: "__open-in-editor",
 };
 
@@ -166,6 +170,33 @@ describe("menu: false", () => {
     expect(event.defaultPrevented).toBe(false);
     const rows = shadow().querySelectorAll(".ttc-menu-item");
     expect(rows.length).toBe(0);
+  });
+});
+
+describe("theme", () => {
+  function hostElement(): HTMLElement {
+    const host = document.querySelector<HTMLElement>("[data-ttc-ui]");
+    if (host === null) throw new Error("overlay missing");
+    return host;
+  }
+
+  it("uses the dark theme by default", () => {
+    configure();
+    expect(hostElement().getAttribute("data-ttc-theme")).toBe("dark");
+  });
+
+  it("switches the whole overlay to light when configured", () => {
+    configure({ theme: "light" });
+    expect(hostElement().getAttribute("data-ttc-theme")).toBe("light");
+  });
+
+  it("ships a dark and a light palette selected by the host attribute", () => {
+    configure({ theme: "light" });
+    const css = shadow().querySelector("style")?.textContent ?? "";
+
+    expect(css).toContain(':host([data-ttc-theme="light"])');
+    expect(css).toContain("--ttc-surface: rgba(16, 17, 22, 0.98)");
+    expect(css).toContain("--ttc-surface: rgba(255, 255, 255, 0.98)");
   });
 });
 

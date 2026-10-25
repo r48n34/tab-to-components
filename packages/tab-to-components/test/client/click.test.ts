@@ -9,11 +9,14 @@ const BASE_CONFIG: ClientConfig = {
   base: "/",
   keyboard: ["alt"],
   open: "component",
+  clickActions: ["open", "copy-file", "copy-full-path"],
   menu: true,
+  theme: "dark",
   editorEndpoint: "__open-in-editor",
 };
 
 let fetchMock: ReturnType<typeof vi.fn>;
+let clipboardWrite: ReturnType<typeof vi.fn>;
 
 function setConfig(overrides: Partial<ClientConfig> = {}): ClientConfig {
   const config = { ...BASE_CONFIG, ...overrides };
@@ -87,15 +90,54 @@ function altClick(target: Element): { mousedown: MouseEvent; click: MouseEvent }
   return { mousedown, click };
 }
 
+function keydown(key: string): KeyboardEvent {
+  const event = new KeyboardEvent("keydown", {
+    key,
+    bubbles: true,
+    cancelable: true,
+  });
+  window.dispatchEvent(event);
+  return event;
+}
+
 function shadowRoot(): ShadowRoot {
   const host = document.querySelector("[data-ttc-ui]");
   if (!host?.shadowRoot) throw new Error("overlay host/shadow root missing");
   return host.shadowRoot;
 }
 
+function actionMenu(): HTMLElement | null {
+  return shadowRoot().querySelector<HTMLElement>('[data-ttc-menu="actions"]');
+}
+
+function actionRows(): HTMLButtonElement[] {
+  return Array.from(
+    shadowRoot().querySelectorAll<HTMLButtonElement>(
+      '[data-ttc-menu="actions"] .ttc-menu-item',
+    ),
+  );
+}
+
+function rowWithLabel(label: string): HTMLButtonElement {
+  const row = actionRows().find((candidate) =>
+    (candidate.textContent ?? "").startsWith(label),
+  );
+  if (!row) throw new Error(`action row "${label}" missing`);
+  return row;
+}
+
+function clickRow(row: HTMLButtonElement): void {
+  row.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+}
+
 beforeEach(() => {
   fetchMock = vi.fn(async () => ({ ok: true, status: 200 }));
   vi.stubGlobal("fetch", fetchMock);
+  clipboardWrite = vi.fn(async () => {});
+  Object.defineProperty(window.navigator, "clipboard", {
+    configurable: true,
+    value: { writeText: clipboardWrite },
+  });
   globalThis.__TTC_CONFIG__ = undefined;
   globalThis.__TTC_READY__ = undefined;
   globalThis.__TTC_VERSION__ = undefined;
@@ -105,6 +147,10 @@ beforeEach(() => {
 afterEach(() => {
   uninstall();
   vi.unstubAllGlobals();
+  Object.defineProperty(window.navigator, "clipboard", {
+    configurable: true,
+    value: undefined,
+  });
   globalThis.__TTC_CONFIG__ = undefined;
   globalThis.__TTC_READY__ = undefined;
   globalThis.__TTC_VERSION__ = undefined;
@@ -153,8 +199,8 @@ describe("install", () => {
   });
 });
 
-describe("modifier + click", () => {
-  it("opens the nearest component source and suppresses the app click", async () => {
+describe("source action picker", () => {
+  it("opens the action picker and suppresses the app click", () => {
     setConfig();
     const button = mountReactButton();
     install();
@@ -165,6 +211,29 @@ describe("modifier + click", () => {
 
     expect(mousedown.defaultPrevented).toBe(true);
     expect(click.defaultPrevented).toBe(true);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    expect(actionMenu()?.style.display).toBe("block");
+    const rows = actionRows();
+    expect(rows).toHaveLength(3);
+    expect(rows[0]?.textContent).toBe("Open in IDE  app/routes/home.tsx:19:7");
+    expect(rows[1]?.textContent).toBe("Copy file name  home.tsx");
+    expect(rows[2]?.textContent).toBe(
+      "Copy full path  D:/proj/app/routes/home.tsx",
+    );
+    expect(rows[0]?.hasAttribute("data-active")).toBe(true);
+  });
+
+  it("opens the editor when the first action is chosen", async () => {
+    setConfig();
+    const button = mountReactButton();
+    install();
+
+    pressAlt();
+    mouseEvent("mousemove", button, { altKey: true });
+    altClick(button);
+    clickRow(rowWithLabel("Open in IDE"));
+
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
       "/__open-in-editor?file=D%3A%2Fproj%2Fapp%2Froutes%2Fhome.tsx%3A19%3A7",
@@ -178,6 +247,160 @@ describe("modifier + click", () => {
     });
   });
 
+  it("copies the file name without opening the editor", async () => {
+    setConfig();
+    const button = mountReactButton();
+    install();
+
+    pressAlt();
+    mouseEvent("mousemove", button, { altKey: true });
+    altClick(button);
+    clickRow(rowWithLabel("Copy file name"));
+
+    await vi.waitFor(() => {
+      expect(clipboardWrite).toHaveBeenCalledTimes(1);
+    });
+    expect(clipboardWrite.mock.calls[0]?.[0]).toBe("home.tsx");
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    const shadow = shadowRoot();
+    await vi.waitFor(() => {
+      expect(shadow.textContent ?? "").toContain("Copied file name: home.tsx");
+    });
+    expect(actionMenu()?.style.display ?? "none").toBe("none");
+  });
+
+  it("copies the full absolute path without opening the editor", async () => {
+    setConfig();
+    const button = mountReactButton();
+    install();
+
+    pressAlt();
+    mouseEvent("mousemove", button, { altKey: true });
+    altClick(button);
+    clickRow(rowWithLabel("Copy full path"));
+
+    await vi.waitFor(() => {
+      expect(clipboardWrite).toHaveBeenCalledTimes(1);
+    });
+    expect(clipboardWrite.mock.calls[0]?.[0]).toBe(
+      "D:/proj/app/routes/home.tsx",
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    const shadow = shadowRoot();
+    await vi.waitFor(() => {
+      expect(shadow.textContent ?? "").toContain(
+        "Copied full path: D:/proj/app/routes/home.tsx",
+      );
+    });
+  });
+
+  it("offers the configured copy path and location actions", async () => {
+    setConfig({ clickActions: ["copy-path", "copy-location"] });
+    const button = mountReactButton();
+    install();
+
+    pressAlt();
+    mouseEvent("mousemove", button, { altKey: true });
+    altClick(button);
+
+    const rows = actionRows();
+    expect(rows).toHaveLength(2);
+    expect(rows[0]?.textContent).toBe(
+      "Copy relative path  app/routes/home.tsx",
+    );
+    expect(rows[1]?.textContent).toBe(
+      "Copy file:line:column  app/routes/home.tsx:19:7",
+    );
+
+    clickRow(rowWithLabel("Copy relative path"));
+    await vi.waitFor(() => {
+      expect(clipboardWrite).toHaveBeenCalledTimes(1);
+    });
+    expect(clipboardWrite.mock.calls[0]?.[0]).toBe("app/routes/home.tsx");
+
+    pressAlt();
+    altClick(button);
+    clickRow(rowWithLabel("Copy file:line:column"));
+    await vi.waitFor(() => {
+      expect(clipboardWrite).toHaveBeenCalledTimes(2);
+    });
+    expect(clipboardWrite.mock.calls[1]?.[0]).toBe(
+      "app/routes/home.tsx:19:7",
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("runs a single configured open action immediately, without a picker", () => {
+    setConfig({ clickActions: ["open"] });
+    const button = mountReactButton();
+    install();
+
+    pressAlt();
+    altClick(button);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "/__open-in-editor?file=D%3A%2Fproj%2Fapp%2Froutes%2Fhome.tsx%3A19%3A7",
+    );
+    expect(actionRows()).toHaveLength(0);
+  });
+
+  it("runs a single configured copy action immediately, without a picker", async () => {
+    setConfig({ clickActions: ["copy-file"] });
+    const button = mountReactButton();
+    install();
+
+    pressAlt();
+    altClick(button);
+
+    await vi.waitFor(() => {
+      expect(clipboardWrite).toHaveBeenCalledWith("home.tsx");
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(actionRows()).toHaveLength(0);
+  });
+
+  it("supports keyboard selection in the action picker", async () => {
+    setConfig();
+    const button = mountReactButton();
+    install();
+
+    pressAlt();
+    mouseEvent("mousemove", button, { altKey: true });
+    altClick(button);
+
+    const down = keydown("ArrowDown");
+    expect(down.defaultPrevented).toBe(true);
+    expect(actionRows()[1]?.hasAttribute("data-active")).toBe(true);
+
+    const enter = keydown("Enter");
+    expect(enter.defaultPrevented).toBe(true);
+    await vi.waitFor(() => {
+      expect(clipboardWrite).toHaveBeenCalledWith("home.tsx");
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("shows a copyable toast when the clipboard is unavailable", async () => {
+    setConfig({ clickActions: ["copy-file"] });
+    clipboardWrite.mockRejectedValueOnce(new Error("denied"));
+    const button = mountReactButton();
+    install();
+
+    pressAlt();
+    altClick(button);
+
+    const shadow = shadowRoot();
+    await vi.waitFor(() => {
+      expect(shadow.textContent ?? "").toContain("Could not copy");
+    });
+    expect(shadow.textContent ?? "").toContain("home.tsx");
+  });
+});
+
+describe("modifier + click", () => {
   it("draws the hover overlay once the modifier is armed", async () => {
     setConfig();
     const button = mountReactButton();
@@ -210,7 +433,7 @@ describe("modifier + click", () => {
   });
 
   it("opens the clicked host element when open is 'element'", () => {
-    setConfig({ open: "element" });
+    setConfig({ open: "element", clickActions: ["open"] });
     const button = mountReactButton();
     install();
 
@@ -224,7 +447,7 @@ describe("modifier + click", () => {
   });
 
   it("prefixes the editor url with the Vite base", () => {
-    setConfig({ base: "/app/" });
+    setConfig({ base: "/app/", clickActions: ["open"] });
     const button = mountReactButton();
     install();
 
@@ -237,7 +460,7 @@ describe("modifier + click", () => {
   });
 
   it("shows a copyable path toast when the editor request fails", async () => {
-    setConfig();
+    setConfig({ clickActions: ["open"] });
     fetchMock.mockResolvedValueOnce({ ok: false, status: 500 });
     const button = mountReactButton();
     install();
@@ -357,6 +580,7 @@ describe("component chain menu", () => {
 
     const { click } = altClick(button);
     expect(click.defaultPrevented).toBe(true);
+    clickRow(rowWithLabel("Open in IDE"));
     await vi.waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });

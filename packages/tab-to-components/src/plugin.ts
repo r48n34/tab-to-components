@@ -14,14 +14,17 @@ import {
   parseEditorTarget,
 } from "./editor.js";
 import { VERSION } from "./version.js";
-import type {
-  TabToComponentsOptions,
-  ClientConfig,
-  EditorLauncher,
-  EditorOption,
-  InspectorKey,
-  TabToComponentsOpenMode,
-  ResolvedOptions,
+import {
+  DEFAULT_CLICK_ACTIONS,
+  type TabToComponentsOptions,
+  type ClientConfig,
+  type EditorLauncher,
+  type EditorOption,
+  type InspectorKey,
+  type TabToComponentsClickAction,
+  type TabToComponentsOpenMode,
+  type TabToComponentsTheme,
+  type ResolvedOptions,
 } from "./types.js";
 
 const VALID_KEYS: InspectorKey[] = ["alt", "ctrl", "meta", "shift"];
@@ -29,6 +32,14 @@ const VALID_OPEN_MODES: TabToComponentsOpenMode[] = [
   "component",
   "element",
   "menu",
+];
+const VALID_THEMES: TabToComponentsTheme[] = ["dark", "light"];
+const VALID_CLICK_ACTIONS: TabToComponentsClickAction[] = [
+  "open",
+  "copy-file",
+  "copy-path",
+  "copy-full-path",
+  "copy-location",
 ];
 
 /** IDE opened when the user does not pass `editor`. */
@@ -53,6 +64,18 @@ function resolveOptions(options: TabToComponentsOptions): ResolvedOptions {
   )
     ? (options.open as TabToComponentsOpenMode)
     : "component";
+  const requestedActions = Array.isArray(options.clickActions)
+    ? options.clickActions
+    : options.clickActions === undefined
+      ? DEFAULT_CLICK_ACTIONS
+      : [options.clickActions];
+  const clickActions = [
+    ...new Set(
+      requestedActions.filter((action): action is TabToComponentsClickAction =>
+        VALID_CLICK_ACTIONS.includes(action as TabToComponentsClickAction),
+      ),
+    ),
+  ];
   const include = options.include
     ? Array.isArray(options.include)
       ? options.include
@@ -67,7 +90,12 @@ function resolveOptions(options: TabToComponentsOptions): ResolvedOptions {
   return {
     keyboard: keys.length > 0 ? keys : ["alt"],
     open,
+    clickActions:
+      clickActions.length > 0 ? clickActions : [...DEFAULT_CLICK_ACTIONS],
     menu: options.menu !== false,
+    theme: VALID_THEMES.includes(options.theme as TabToComponentsTheme)
+      ? (options.theme as TabToComponentsTheme)
+      : "dark",
     overlay: options.overlay ?? "all",
     ssr: options.ssr !== false,
     include,
@@ -107,7 +135,8 @@ const COMPILED_JSX_RE = /\b(?:jsxDEV|jsxs?|createElement)\s*\(/;
  *
  * Dev-only Vite plugin that annotates every JSX element with its original
  * source location and serves a tiny DOM overlay. Works with plain Vite, React
- * Router v7 and React Router v8 framework mode (including SSR), and React 19.
+ * Router v6 (SPA), React Router v7/v8 framework mode (including SSR),
+ * TanStack Start and Remix v2, on React 18 and React 19.
  *
  * By default the location is opened in VS Code (`code`); pass `editor` to use
  * Cursor, Trae, WebStorm, any other command, or `"auto"` for Vite's
@@ -161,7 +190,9 @@ export function tabToComponents(
       base,
       keyboard: resolved.keyboard,
       open: resolved.open,
+      clickActions: resolved.clickActions,
       menu: resolved.menu,
+      theme: resolved.theme,
       editorEndpoint,
     };
   }
@@ -281,7 +312,7 @@ export function tabToComponents(
         logger.info(
           `  tab-to-components v${VERSION}  hold ${resolved.keyboard
             .map((key) => key.toUpperCase())
-            .join("+")} and click an element to open its source (dev only)`,
+            .join("+")} and click an element for source actions (dev only)`,
         );
         if (editorLauncher) {
           const suffix = resolved.editorExplicit ? "" : " (default)";

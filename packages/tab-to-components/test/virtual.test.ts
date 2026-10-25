@@ -20,7 +20,9 @@ const CONFIG: ClientConfig = {
   base: "/app/",
   keyboard: ["alt", "shift"],
   open: "menu",
+  clickActions: ["open", "copy-file"],
   menu: false,
+  theme: "light",
   editorEndpoint: "__ttc/open-in-editor",
 };
 

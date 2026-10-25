@@ -8,7 +8,9 @@ const CONFIG: ClientConfig = {
   base: "/",
   keyboard: ["alt"],
   open: "component",
+  clickActions: ["open", "copy-file"],
   menu: true,
+  theme: "dark",
   editorEndpoint: "__open-in-editor",
 };
 

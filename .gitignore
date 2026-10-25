@@ -8,6 +8,16 @@ dist/
 playground/**/build/
 playground/**/.react-router/
 playground/**/dist/
+playground/**/.output/
+playground/**/.tanstack/
+
+# Isolated compatibility install roots (React 18 / React Router v6 / Remix).
+compat/**/build/
+compat/**/dist/
+compat/**/.output/
+compat/**/.tanstack/
+compat/**/.react-router/
+compat/**/.vite/
 
 # Local demo apps for manual testing (Mantine + raw React Router). Installed as
 # workspace members but intentionally kept out of version control.

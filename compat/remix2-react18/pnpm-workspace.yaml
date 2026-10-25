@@ -1,0 +1,14 @@
+packages: []
+
+# Standalone pnpm project (outside the root workspace) so Remix runs with
+# React 18 + Vite 6 without sharing a hoisted node_modules with the React 19
+# root workspace.
+storeDir: ../../.pnpm-store
+cacheDir: ../../.pnpm-cache
+stateDir: ../../.pnpm-state
+packageManagerStrict: false
+strictPeerDependencies: false
+autoInstallPeers: true
+nodeLinker: hoisted
+allowBuilds:
+  esbuild: false

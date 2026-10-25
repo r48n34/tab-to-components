@@ -9,14 +9,20 @@
 //   3. navigates over CDP, waits for `__TTC_READY__`, checks that `data-ttc`
 //      markers reached the DOM and that React hydrated the button,
 //   4. holds Alt (rawKeyDown + modifiers: 1) and clicks the rendered button,
-//   5. asserts the browser issued an open-in-editor request
+//   5. asserts the source action picker opened with "Open in IDE",
+//      "Copy file name" and "Copy full path", clicks both copy rows and checks
+//      that the bare page file name (e.g. `home.tsx`) and the absolute path
+//      reached the clipboard — the clipboard API is stubbed in the page so the
+//      harness can observe the exact text,
+//   6. Alt+clicks again, chooses "Open in IDE" and asserts the browser issued an
+//      open-in-editor request
 //      (`GET <base>__ttc/open-in-editor?file=<abs page file>:<line>:<column>`,
 //      the plugin's endpoint for its default VS Code editor) for the JSX
 //      *usage site* of `<Button>` in the page module (`app/routes/home.tsx` for
 //      rr7/rr8, `src/App.tsx` for vite-react),
-//   6. asserts the plugin actually launched the editor with that location by
+//   7. asserts the plugin actually launched the editor with that location by
 //      putting a fake `code` command first on PATH (no VS Code needed), and
-//   7. asserts the app's own click handler did NOT run (counter text unchanged).
+//   8. asserts the app's own click handler did NOT run (counter text unchanged).
 //
 // Usage (must be started from the repo root):
 //   node --import file:///D:/Github/tab-to-components/scripts/sandbox-shim.mjs scripts/e2e.mjs [playground]
@@ -106,7 +112,7 @@ const EXAMPLE_PLAYGROUNDS = [
 ].filter((playground) => fs.existsSync(playground.dir));
 
 /** Raised for harness/setup problems (bad args, missing browser, …). */
-class HarnessError extends Error {
+export class HarnessError extends Error {
   constructor(message, { hint } = {}) {
     super(message);
     this.name = "HarnessError";
@@ -115,11 +121,11 @@ class HarnessError extends Error {
 }
 
 /** Raised when Chrome cannot expose its DevTools endpoint. */
-class ChromeUnavailableError extends HarnessError {}
+export class ChromeUnavailableError extends HarnessError {}
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const toPosix = (value) => String(value).replace(/\\/g, "/");
+export const toPosix = (value) => String(value).replace(/\\/g, "/");
 
 function log(message = "") {
   console.log(message);
@@ -144,7 +150,7 @@ function formatExitCode(code) {
 // Expected source location: the JSX usage site of <Button> in the page module.
 // ---------------------------------------------------------------------------
 
-function computeExpectedLocation(pageFileAbs) {
+export function computeExpectedLocation(pageFileAbs) {
   const source = fs.readFileSync(pageFileAbs, "utf8");
   const occurrences = [...source.matchAll(/<Button\b/g)];
   if (occurrences.length === 0) {
@@ -632,8 +638,119 @@ const BUTTON_RECT_EXPRESSION = `(() => {
   return JSON.stringify({ x: rect.x, y: rect.y, width: rect.width, height: rect.height });
 })()`;
 
+/** Read the open source action picker, or null when it is not visible. */
+const ACTION_MENU_EXPRESSION = `(() => {
+  const host = document.querySelector("[data-ttc-ui]");
+  const menu = host && host.shadowRoot
+    ? host.shadowRoot.querySelector('[data-ttc-menu="actions"]')
+    : null;
+  if (!menu || menu.style.display === "none") return null;
+  return JSON.stringify(Array.from(menu.querySelectorAll(".ttc-menu-item"), (row) => ({
+    label: (row.querySelector(".ttc-menu-name") || {}).textContent || "",
+    detail: (row.querySelector(".ttc-menu-source") || {}).textContent || "",
+    text: row.textContent || ""
+  })));
+})()`;
+
+/**
+ * Observe the exact clipboard text from the page. Headless Chrome may allow the
+ * real Clipboard API, but granting permissions and reading the OS clipboard is
+ * platform-specific; stubbing writeText keeps this harness deterministic while
+ * exercising the runtime's real copy path.
+ */
+const CLIPBOARD_CAPTURE_EXPRESSION = `(() => {
+  try {
+    window.__ttcClipboard = [];
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async (text) => { window.__ttcClipboard.push(String(text)); }
+      }
+    });
+    return true;
+  } catch (error) {
+    return String(error && error.message ? error.message : error);
+  }
+})()`;
+
 async function readPageState(client) {
   return evaluate(client, PAGE_STATE_EXPRESSION);
+}
+
+async function installClipboardCapture(client) {
+  const result = await evaluate(client, CLIPBOARD_CAPTURE_EXPRESSION);
+  if (result !== true) {
+    throw new HarnessError(
+      `could not stub navigator.clipboard in the page: ${String(result)}`,
+    );
+  }
+}
+
+async function waitForActionMenu(client, timeoutMs = 5_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const json = await evaluate(client, ACTION_MENU_EXPRESSION).catch(() => null);
+    if (typeof json === "string") {
+      let rows;
+      try {
+        rows = JSON.parse(json);
+      } catch {
+        rows = null;
+      }
+      if (Array.isArray(rows) && rows.length > 0) return rows;
+    }
+    await delay(100);
+  }
+  return null;
+}
+
+async function clickActionRow(client, label) {
+  return evaluate(
+    client,
+    `(() => {
+      const host = document.querySelector("[data-ttc-ui]");
+      const menu = host && host.shadowRoot
+        ? host.shadowRoot.querySelector('[data-ttc-menu="actions"]')
+        : null;
+      if (!menu) return false;
+      const row = Array.from(menu.querySelectorAll(".ttc-menu-item")).find((candidate) =>
+        (candidate.textContent || "").startsWith(${JSON.stringify(label)}),
+      );
+      if (!row) return false;
+      row.click();
+      return true;
+    })()`,
+  );
+}
+
+async function readCopiedTexts(client) {
+  const value = await evaluate(
+    client,
+    "Array.isArray(window.__ttcClipboard) ? window.__ttcClipboard.slice() : []",
+  );
+  return Array.isArray(value) ? value.map(String) : [];
+}
+
+async function waitForCopiedText(client, expected, timeoutMs = 3_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const texts = await readCopiedTexts(client).catch(() => []);
+    if (texts.includes(expected)) return texts;
+    await delay(50);
+  }
+  return readCopiedTexts(client).catch(() => []);
+}
+
+/**
+ * Alt+click the button, wait for the source action picker and activate one row.
+ * Returns null when the picker never opened (the caller may retry once).
+ */
+async function chooseSourceAction(client, x, y, label) {
+  await dispatchAltClick(client, x, y);
+  const rows = await waitForActionMenu(client);
+  if (rows === null) return null;
+  const clicked = await clickActionRow(client, label);
+  return { rows, clicked };
 }
 
 async function ensurePageUrl(client, baseUrl) {
@@ -833,10 +950,12 @@ function wireNetworkCapture(client, diagnostics) {
 // Browser-mode runner
 // ---------------------------------------------------------------------------
 
-async function runPlaygroundInBrowser(playground) {
+export async function runPlaygroundInBrowser(playground) {
   const startedAt = Date.now();
   const pageFileAbs = path.join(playground.dir, playground.pageFile);
   const expected = computeExpectedLocation(pageFileAbs);
+  const expectedFileName = toPosix(path.basename(playground.pageFile));
+  const expectedFullPath = toPosix(pageFileAbs);
   const profileDir = path.join(
     PROFILE_ROOT,
     `${playground.name}-${process.pid}-${Date.now()}`,
@@ -854,6 +973,8 @@ async function runPlaygroundInBrowser(playground) {
   let readyInfo = null;
   let clickInfo = null;
   let preClickState = null;
+  let actionMenuRows = null;
+  let copiedText = null;
 
   log(`\n=== ${playground.name} — ${playground.description} ===`);
   log(`  root:      ${toPosix(playground.dir)}`);
@@ -896,13 +1017,16 @@ async function runPlaygroundInBrowser(playground) {
         clickPoint.y,
       )}) on "count is 0" button`,
     );
-    await dispatchAltClick(client, clickPoint.x, clickPoint.y);
+    await installClipboardCapture(client);
 
-    let request = await waitForFirstOpenEditorRequest(
-      diagnostics.requests,
-      OPEN_EDITOR_REQUEST_TIMEOUT_MS,
+    // Alt+click must open the source action picker, not open the editor directly.
+    let copyAttempt = await chooseSourceAction(
+      client,
+      clickPoint.x,
+      clickPoint.y,
+      "Copy file name",
     );
-    if (!request) {
+    if (copyAttempt === null) {
       // One retry: the modifier/hover plumbing can race the very first click on
       // a cold page. The retry is only safe while the app counter is unchanged.
       const stateAfterAttempt = await readPageState(client);
@@ -911,8 +1035,142 @@ async function runPlaygroundInBrowser(playground) {
           `the Alt+click reached the app instead of the overlay: button text changed from "${preClickState.buttonText}" to "${stateAfterAttempt.buttonText}".`,
         );
       }
-      log("  retry:      no request after the first Alt+click; retrying once");
-      await dispatchAltClick(client, clickPoint.x, clickPoint.y);
+      log("  retry:      no action picker after the first Alt+click; retrying once");
+      copyAttempt = await chooseSourceAction(
+        client,
+        clickPoint.x,
+        clickPoint.y,
+        "Copy file name",
+      );
+    }
+    if (copyAttempt === null) {
+      throw new HarnessError(
+        [
+          "Alt+click did not open the source action picker.",
+          "  page console:",
+          summarizeConsoleMessages(diagnostics.consoleMessages),
+        ].join("\n"),
+      );
+    }
+
+    actionMenuRows = copyAttempt.rows;
+    const labels = actionMenuRows.map((row) => row.label);
+    if (
+      !labels.includes("Open in IDE") ||
+      !labels.includes("Copy file name") ||
+      !labels.includes("Copy full path")
+    ) {
+      throw new HarnessError(
+        `the action picker is missing its default rows: ${JSON.stringify(labels)}`,
+      );
+    }
+    const copyRow = actionMenuRows.find((row) => row.label === "Copy file name");
+    if (copyRow?.detail !== expectedFileName) {
+      throw new HarnessError(
+        `the copy row shows "${copyRow?.detail ?? "?"}"; expected the page file name "${expectedFileName}".`,
+      );
+    }
+    if (!copyAttempt.clicked) {
+      throw new HarnessError("could not activate the Copy file name row.");
+    }
+
+    const copiedTexts = await waitForCopiedText(client, expectedFileName);
+    if (!copiedTexts.includes(expectedFileName)) {
+      throw new HarnessError(
+        `Copy file name did not write "${expectedFileName}" to the clipboard (observed ${JSON.stringify(copiedTexts)}).`,
+      );
+    }
+    copiedText = expectedFileName;
+    log(`  copy:       clipboard <- ${expectedFileName}`);
+
+    // The same picker must offer the absolute path of the file.
+    const copyFullAttempt = await chooseSourceAction(
+      client,
+      clickPoint.x,
+      clickPoint.y,
+      "Copy full path",
+    );
+    if (copyFullAttempt === null || !copyFullAttempt.clicked) {
+      throw new HarnessError("could not activate the Copy full path row.");
+    }
+    const fullPathRow = copyFullAttempt.rows.find(
+      (row) => row.label === "Copy full path",
+    );
+    if (fullPathRow?.detail !== expectedFullPath) {
+      throw new HarnessError(
+        `the full-path row shows "${fullPathRow?.detail ?? "?"}"; expected "${expectedFullPath}".`,
+      );
+    }
+    const copiedFullPaths = await waitForCopiedText(client, expectedFullPath);
+    if (!copiedFullPaths.includes(expectedFullPath)) {
+      throw new HarnessError(
+        `Copy full path did not write "${expectedFullPath}" to the clipboard (observed ${JSON.stringify(copiedFullPaths)}).`,
+      );
+    }
+    copiedText = `${expectedFileName}, ${expectedFullPath}`;
+    log(`  copy:       clipboard <- ${expectedFullPath}`);
+
+    // The copy actions must not double as editor requests.
+    await delay(150);
+    if (diagnostics.requests.length > 0) {
+      throw new HarnessError(
+        "a copy action unexpectedly issued an open-in-editor request.",
+      );
+    }
+
+    // Choose the editor row next. The same one-retry policy as before: a cold
+    // page may drop the first synthetic Alt+click.
+    let openAttempt = await chooseSourceAction(
+      client,
+      clickPoint.x,
+      clickPoint.y,
+      "Open in IDE",
+    );
+    if (openAttempt === null) {
+      const stateAfterAttempt = await readPageState(client);
+      if (stateAfterAttempt.buttonText !== preClickState.buttonText) {
+        throw new HarnessError(
+          `the Alt+click reached the app instead of the overlay: button text changed from "${preClickState.buttonText}" to "${stateAfterAttempt.buttonText}".`,
+        );
+      }
+      log("  retry:      no action picker while reopening; retrying once");
+      openAttempt = await chooseSourceAction(
+        client,
+        clickPoint.x,
+        clickPoint.y,
+        "Open in IDE",
+      );
+    }
+    if (openAttempt === null || !openAttempt.clicked) {
+      throw new HarnessError(
+        "could not choose Open in IDE from the source action picker.",
+      );
+    }
+
+    let request = await waitForFirstOpenEditorRequest(
+      diagnostics.requests,
+      OPEN_EDITOR_REQUEST_TIMEOUT_MS,
+    );
+    if (!request) {
+      // One more editor retry: reopen the picker and choose the row again.
+      const stateAfterAttempt = await readPageState(client);
+      if (stateAfterAttempt.buttonText !== preClickState.buttonText) {
+        throw new HarnessError(
+          `the Alt+click reached the app instead of the overlay: button text changed from "${preClickState.buttonText}" to "${stateAfterAttempt.buttonText}".`,
+        );
+      }
+      log("  retry:      no request after Open in IDE; retrying once");
+      const retry = await chooseSourceAction(
+        client,
+        clickPoint.x,
+        clickPoint.y,
+        "Open in IDE",
+      );
+      if (retry === null || !retry.clicked) {
+        throw new HarnessError(
+          "could not reopen the source action picker for the editor retry.",
+        );
+      }
       request = await waitForFirstOpenEditorRequest(
         diagnostics.requests,
         OPEN_EDITOR_REQUEST_TIMEOUT_MS,
@@ -921,7 +1179,7 @@ async function runPlaygroundInBrowser(playground) {
     if (!request) {
       throw new HarnessError(
         [
-          `no open-in-editor request was observed after Alt+clicking the button.`,
+          `no open-in-editor request was observed after choosing Open in IDE.`,
           "  page console:",
           summarizeConsoleMessages(diagnostics.consoleMessages),
         ].join("\n"),
@@ -989,6 +1247,9 @@ async function runPlaygroundInBrowser(playground) {
 
   const elapsedMs = Date.now() - startedAt;
   if (passed) {
+    log(
+      `  picker:     ${actionMenuRows.map((row) => row.label).join(", ")} (clipboard -> ${copiedText})`,
+    );
     log(
       `  result:     count unchanged ("${preClickState?.buttonText}"), editor request opened ${observed} (status ${editorStatus})`,
     );
@@ -1155,7 +1416,7 @@ async function runPlaygroundServerOnly(playground) {
  * first on PATH so the full browser → plugin → editor chain can be asserted on
  * a machine that has no VS Code installed.
  */
-function installFakeCodeBinary() {
+export function installFakeCodeBinary() {
   fs.mkdirSync(FAKE_BIN_DIR, { recursive: true });
   if (process.platform === "win32") {
     fs.writeFileSync(
@@ -1303,8 +1564,16 @@ async function main() {
   process.exitCode = passed === results.length ? 0 : 1;
 }
 
-main().catch((error) => {
-  console.error(`\ne2e harness error: ${error.message}`);
-  if (error.hint) console.error(`\n${error.hint}`);
-  process.exitCode = error instanceof HarnessError ? 2 : 1;
-});
+const invokedDirectly =
+  typeof process.argv[1] === "string" &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+// The compatibility matrix imports the runner; only the CLI entry point runs
+// `main()`. Guarding this keeps `pnpm e2e` behaviour identical.
+if (invokedDirectly) {
+  main().catch((error) => {
+    console.error(`\ne2e harness error: ${error.message}`);
+    if (error.hint) console.error(`\n${error.hint}`);
+    process.exitCode = error instanceof HarnessError ? 2 : 1;
+  });
+}

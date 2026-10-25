@@ -24,15 +24,26 @@ jobs:
       # the action fail with "Multiple versions of pnpm specified".
       - uses: pnpm/action-setup@v6
 
+      # React Router 8.5 requires Node >=22.22.0; the `22` channel resolves to
+      # the latest 22.x release on the runner.
       - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            compat/react18/pnpm-lock.yaml
+            compat/react18-rr6/pnpm-lock.yaml
+            compat/react19-rr6/pnpm-lock.yaml
+            compat/remix2-react18/pnpm-lock.yaml
 
       - name: Install
         run: pnpm install --frozen-lockfile
 
-      - name: Build, type-check, unit + integration + Vite matrix + package verification
+      - name: Install isolated compatibility workspaces
+        run: pnpm install:compat
+
+      - name: Build, type-check, tests, Vite matrix, compatibility matrix and package verification
         run: pnpm gate
 
   # The end-to-end suite drives a real browser. It runs locally with

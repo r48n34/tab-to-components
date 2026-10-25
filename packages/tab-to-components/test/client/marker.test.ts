@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  fileNameOf,
   formatEntryLabel,
   formatMarker,
   formatNameLabel,
   parseMarker,
+  resolveFullPath,
 } from "../../src/client/index";
 
 describe("parseMarker", () => {
@@ -76,5 +78,43 @@ describe("label formatting", () => {
         marker: { file: "app/routes/home.tsx", line: 19, column: 7 },
       }),
     ).toBe("<Button />  app/routes/home.tsx:19:7");
+  });
+
+  it("extracts the bare file name of a marker", () => {
+    expect(
+      fileNameOf({ file: "app/components/MyBox.tsx", line: 1, column: 1 }),
+    ).toBe("MyBox.tsx");
+    expect(fileNameOf({ file: "MyBox.tsx", line: 1, column: 1 })).toBe(
+      "MyBox.tsx",
+    );
+    expect(
+      fileNameOf({ file: "app\\components\\MyBox.tsx", line: 1, column: 1 }),
+    ).toBe("MyBox.tsx");
+  });
+
+  it("resolves an absolute file path from the injected root", () => {
+    const marker = {
+      file: "app/components/MyBox.tsx",
+      line: 12,
+      column: 5,
+    };
+    expect(resolveFullPath(marker, "D:/proj")).toBe(
+      "D:/proj/app/components/MyBox.tsx",
+    );
+    expect(resolveFullPath(marker, "D:\\proj\\")).toBe(
+      "D:/proj/app/components/MyBox.tsx",
+    );
+    expect(resolveFullPath(marker, "/home/dev/proj/")).toBe(
+      "/home/dev/proj/app/components/MyBox.tsx",
+    );
+    expect(resolveFullPath(marker, "/")).toBe(
+      "/app/components/MyBox.tsx",
+    );
+    expect(
+      resolveFullPath(
+        { file: "app\\components\\MyBox.tsx", line: 1, column: 1 },
+        "D:/proj",
+      ),
+    ).toBe("D:/proj/app/components/MyBox.tsx");
   });
 });

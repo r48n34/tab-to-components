@@ -8,15 +8,21 @@
  */
 
 import {
+  sourceActionCopy,
+  sourceActionDetail,
+  sourceActionLabel,
+} from "./actions";
+import {
   getComponentChain,
   pickPrimaryEntry,
   type ChainEntry,
 } from "./chain";
-import type { ClientConfig, ModifierKey } from "./config";
+import { copyText } from "./clipboard";
+import type { ClickAction, ClientConfig, ModifierKey } from "./config";
 import { resolveConfig } from "./config";
 import { openInEditor } from "./editor";
 import { formatMarker, formatNameLabel } from "./marker";
-import { Overlay } from "./ui";
+import { Overlay, type MenuItem } from "./ui";
 
 /** Subset of a mouse/keyboard event needed to test modifier state. */
 export interface ModifierState {
@@ -116,7 +122,7 @@ export function install(userConfig?: Partial<ClientConfig> | null): () => void {
     ...(userConfig ?? {}),
   });
 
-  const overlay = new Overlay(document);
+  const overlay = new Overlay(document, config.theme);
   const listeners: RegisteredListener[] = [];
 
   let armed = false;
@@ -213,11 +219,72 @@ export function install(userConfig?: Partial<ClientConfig> | null): () => void {
     });
   }
 
+  function copyEntryValue(action: ClickAction, entry: ChainEntry): void {
+    const copy = sourceActionCopy(action, entry.marker, config.root);
+    if (copy === null) return;
+    void copyText(copy.text).then((copied) => {
+      if (copied) {
+        overlay.showToast(copy.toast);
+        return;
+      }
+      overlay.showToast(`Could not copy. Copy manually: ${copy.text}`, {
+        error: true,
+        duration: 4000,
+      });
+    });
+  }
+
+  function runAction(action: ClickAction, entry: ChainEntry): void {
+    if (action === "open") {
+      openEntry(entry);
+      return;
+    }
+    copyEntryValue(action, entry);
+  }
+
+  /** Build the rows of the modifier + left-click action picker. */
+  function actionItems(entry: ChainEntry): MenuItem[] {
+    return config.clickActions.map((action) => ({
+      label: sourceActionLabel(action),
+      detail: sourceActionDetail(action, entry.marker, config.root),
+      action,
+      onActivate: () => runAction(action, entry),
+    }));
+  }
+
+  /**
+   * Configuring a single action keeps the pre-picker behavior: Alt+click runs
+   * it immediately. Two or more actions open the picker at the cursor.
+   */
+  function chooseAction(entry: ChainEntry, x: number, y: number): void {
+    const actions = config.clickActions;
+    const first = actions[0];
+    if (first === undefined) return;
+    if (actions.length === 1) {
+      runAction(first, entry);
+      return;
+    }
+    disarm();
+    overlay.showMenu(actionItems(entry), x, y, {
+      kind: "actions",
+      ariaLabel: "Source actions",
+    });
+  }
+
   function showChainMenu(target: Element, x: number, y: number): void {
     const chain = getComponentChain(target);
     if (chain.length === 0) return;
     disarm();
-    overlay.showMenu(chain, x, y, { onPick: (entry) => openEntry(entry) });
+    overlay.showMenu(
+      chain.map((entry) => ({
+        label: formatNameLabel(entry.name),
+        detail: formatMarker(entry.marker),
+        onActivate: () => openEntry(entry),
+      })),
+      x,
+      y,
+      { kind: "chain", ariaLabel: "Component chain" },
+    );
   }
 
   const onKeyDown: EventListener = (rawEvent) => {
@@ -312,7 +379,7 @@ export function install(userConfig?: Partial<ClientConfig> | null): () => void {
       return;
     }
     const entry = entryFor(target);
-    if (entry !== null) openEntry(entry);
+    if (entry !== null) chooseAction(entry, event.clientX, event.clientY);
   };
 
   const onContextMenu: EventListener = (rawEvent) => {

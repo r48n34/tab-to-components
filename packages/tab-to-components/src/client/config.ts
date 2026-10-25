@@ -13,6 +13,37 @@ export type ModifierKey = "alt" | "ctrl" | "meta" | "shift";
 /** What a modifier + left click does. */
 export type OpenMode = "component" | "element" | "menu";
 
+/**
+ * Color theme of the overlay UI.
+ *
+ * - `dark` (default): the original blue-on-black overlay.
+ * - `light`: a blue-on-white overlay for light apps and screenshots.
+ */
+export type ThemeMode = "dark" | "light";
+
+/**
+ * One row of the modifier + left-click action picker.
+ *
+ * - `open`: ask the dev server to open the source location in the editor.
+ * - `copy-file`: copy the bare file name (`MyBox.tsx`).
+ * - `copy-path`: copy the project-relative path (`app/components/MyBox.tsx`).
+ * - `copy-full-path`: copy the absolute path (`D:/proj/app/components/MyBox.tsx`).
+ * - `copy-location`: copy `path:line:column`.
+ */
+export type ClickAction =
+  | "open"
+  | "copy-file"
+  | "copy-path"
+  | "copy-full-path"
+  | "copy-location";
+
+/** Actions shown by default: open the editor, copy the file name or full path. */
+export const DEFAULT_CLICK_ACTIONS: readonly ClickAction[] = [
+  "open",
+  "copy-file",
+  "copy-full-path",
+];
+
 /** Shape of `globalThis.__TTC_CONFIG__`, injected by the plugin. */
 export interface ClientConfig {
   /** Plugin version, informational only. */
@@ -25,8 +56,16 @@ export interface ClientConfig {
   keyboard: ModifierKey[];
   /** What a modifier + left click opens. Default "component". */
   open: OpenMode;
+  /**
+   * Actions offered by the modifier + left-click picker, in order. A single
+   * action skips the picker and runs immediately. Default
+   * `["open", "copy-file", "copy-full-path"]`.
+   */
+  clickActions: ClickAction[];
   /** Whether modifier + right click shows the component chain menu. Default true. */
   menu: boolean;
+  /** Color theme of the overlay. Default "dark". */
+  theme: ThemeMode;
   /** Endpoint path relative to `base`. Default "__open-in-editor". */
   editorEndpoint: string;
 }
@@ -38,12 +77,22 @@ export const DEFAULT_CONFIG: ClientConfig = {
   base: "/",
   keyboard: ["alt"],
   open: "component",
+  clickActions: [...DEFAULT_CLICK_ACTIONS],
   menu: true,
+  theme: "dark",
   editorEndpoint: "__open-in-editor",
 };
 
 const MODIFIER_KEYS: readonly ModifierKey[] = ["alt", "ctrl", "meta", "shift"];
 const OPEN_MODES: readonly OpenMode[] = ["component", "element", "menu"];
+const THEMES: readonly ThemeMode[] = ["dark", "light"];
+const CLICK_ACTIONS: readonly ClickAction[] = [
+  "open",
+  "copy-file",
+  "copy-path",
+  "copy-full-path",
+  "copy-location",
+];
 
 function normalizeRoot(root: string): string {
   const slashed = root.replace(/\\/g, "/");
@@ -78,6 +127,29 @@ function normalizeOpen(open: unknown): OpenMode {
     : DEFAULT_CONFIG.open;
 }
 
+function normalizeTheme(theme: unknown): ThemeMode {
+  return typeof theme === "string" && THEMES.includes(theme as ThemeMode)
+    ? (theme as ThemeMode)
+    : DEFAULT_CONFIG.theme;
+}
+
+function normalizeClickActions(
+  actions: readonly unknown[] | string | undefined,
+): ClickAction[] {
+  const raw = typeof actions === "string" ? [actions] : actions;
+  if (!Array.isArray(raw)) return [...DEFAULT_CLICK_ACTIONS];
+  const normalized: ClickAction[] = [];
+  for (const action of raw) {
+    if (typeof action !== "string") continue;
+    const candidate = action as ClickAction;
+    if (!CLICK_ACTIONS.includes(candidate) || normalized.includes(candidate)) {
+      continue;
+    }
+    normalized.push(candidate);
+  }
+  return normalized.length > 0 ? normalized : [...DEFAULT_CLICK_ACTIONS];
+}
+
 function normalizeEndpoint(endpoint: unknown): string {
   if (typeof endpoint !== "string" || endpoint.trim() === "") {
     return DEFAULT_CONFIG.editorEndpoint;
@@ -97,7 +169,9 @@ export function resolveConfig(input?: Partial<ClientConfig> | null): ClientConfi
     base: normalizeBase(typeof source.base === "string" ? source.base : DEFAULT_CONFIG.base),
     keyboard: normalizeKeyboard(source.keyboard),
     open: normalizeOpen(source.open),
+    clickActions: normalizeClickActions(source.clickActions),
     menu: source.menu === undefined ? DEFAULT_CONFIG.menu : Boolean(source.menu),
+    theme: normalizeTheme(source.theme),
     editorEndpoint: normalizeEndpoint(source.editorEndpoint),
   };
 }

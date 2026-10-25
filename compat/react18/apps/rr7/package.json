@@ -1,0 +1,24 @@
+{
+  "name": "compat-react18-rr7",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "react-router dev",
+    "build": "react-router build"
+  },
+  "dependencies": {
+    "@react-router/node": "7.18.4",
+    "isbot": "5.1.40",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "react-router": "7.18.4"
+  },
+  "devDependencies": {
+    "@react-router/dev": "7.18.4",
+    "@types/react": "18.3.31",
+    "@types/react-dom": "18.3.7",
+    "tab-to-components": "file:../../../../packages/tab-to-components",
+    "typescript": "5.9.3",
+    "vite": "8.3.5"
+  }
+}

@@ -48,6 +48,61 @@ describe("resolveConfig", () => {
     expect(resolveConfig({ menu: true }).menu).toBe(true);
     expect(resolveConfig({ version: "1.2.3" }).version).toBe("1.2.3");
   });
+
+  it("defaults the overlay to the dark theme and accepts light", () => {
+    expect(DEFAULT_CONFIG.theme).toBe("dark");
+    expect(resolveConfig().theme).toBe("dark");
+    expect(resolveConfig({ theme: "light" }).theme).toBe("light");
+    expect(resolveConfig({ theme: "dark" }).theme).toBe("dark");
+  });
+
+  it("falls back to dark for an unknown theme", () => {
+    expect(resolveConfig({ theme: "solarized" as never }).theme).toBe("dark");
+  });
+
+  it("defaults the click action picker to open, file name and full path", () => {
+    expect(DEFAULT_CONFIG.clickActions).toEqual([
+      "open",
+      "copy-file",
+      "copy-full-path",
+    ]);
+    expect(resolveConfig().clickActions).toEqual([
+      "open",
+      "copy-file",
+      "copy-full-path",
+    ]);
+  });
+
+  it("keeps known click actions in order and dedupes them", () => {
+    expect(
+      resolveConfig({
+        clickActions: [
+          "copy-file",
+          "open",
+          "copy-file",
+          "copy-path",
+          "copy-full-path",
+        ],
+      }).clickActions,
+    ).toEqual(["copy-file", "open", "copy-path", "copy-full-path"]);
+  });
+
+  it("drops unknown click actions and falls back to the defaults", () => {
+    expect(
+      resolveConfig({ clickActions: ["nope" as never] }).clickActions,
+    ).toEqual(["open", "copy-file", "copy-full-path"]);
+    expect(resolveConfig({ clickActions: [] }).clickActions).toEqual([
+      "open",
+      "copy-file",
+      "copy-full-path",
+    ]);
+  });
+
+  it("accepts a single action as a shorthand", () => {
+    expect(
+      resolveConfig({ clickActions: "open" as never }).clickActions,
+    ).toEqual(["open"]);
+  });
 });
 
 describe("install without a DOM", () => {

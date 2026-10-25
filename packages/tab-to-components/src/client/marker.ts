@@ -52,6 +52,35 @@ export function formatMarker(marker: SourceMarker): string {
   return `${marker.file}:${marker.line}:${marker.column}`;
 }
 
+/**
+ * The bare file name of a marker's file: `home.tsx` for
+ * `app/routes/home.tsx`. Markers always use forward slashes, but a
+ * `data-ttc` attribute authored by hand may carry backslashes, so both
+ * separators are accepted.
+ */
+export function fileNameOf(marker: SourceMarker): string {
+  const file = marker.file;
+  const separator = Math.max(file.lastIndexOf("/"), file.lastIndexOf("\\"));
+  return separator === -1 ? file : file.slice(separator + 1);
+}
+
+/**
+ * Join the injected project root and a marker's relative path into the
+ * absolute path of the source file, using forward slashes:
+ *
+ *   resolveFullPath({ file: "app/components/MyBox.tsx", … }, "D:/proj")
+ *   // "D:/proj/app/components/MyBox.tsx"
+ *
+ * The client config normalizes the root to forward slashes without a trailing
+ * slash, but POSIX roots and backslash input are handled too.
+ */
+export function resolveFullPath(marker: SourceMarker, root: string): string {
+  const normalizedRoot = root.replace(/\\/g, "/");
+  const relative = marker.file.replace(/\\/g, "/").replace(/^\/+/, "");
+  if (normalizedRoot === "" || normalizedRoot === "/") return `/${relative}`;
+  return `${normalizedRoot.replace(/\/+$/, "")}/${relative}`;
+}
+
 /** Anything with the pair of fields needed for a label. */
 export interface LabelInput {
   name: string;

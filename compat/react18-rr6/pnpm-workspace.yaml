@@ -1,0 +1,14 @@
+packages: []
+
+# React Router v6 lives in its own install root: React Router v6 and v7 share
+# the `react-router` package name, and a hoisted workspace would let v6's
+# react-router-dom resolve the v7 copy.
+storeDir: ../../.pnpm-store
+cacheDir: ../../.pnpm-cache
+stateDir: ../../.pnpm-state
+packageManagerStrict: false
+strictPeerDependencies: false
+autoInstallPeers: true
+nodeLinker: hoisted
+allowBuilds:
+  esbuild: false

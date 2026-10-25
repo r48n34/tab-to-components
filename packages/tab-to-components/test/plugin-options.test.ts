@@ -22,7 +22,9 @@ interface ClientPayload {
   base: string;
   keyboard: string[];
   open: string;
+  clickActions: string[];
   menu: boolean;
+  theme: string;
   editorEndpoint: string;
 }
 
@@ -109,6 +111,65 @@ describe("open / menu options", () => {
       clientPayload(createPlugin({ editorEndpoint: "/custom/open" }))
         .editorEndpoint,
     ).toBe("custom/open");
+  });
+});
+
+describe("theme option", () => {
+  it("defaults to the original dark overlay", () => {
+    expect(clientPayload(createPlugin()).theme).toBe("dark");
+  });
+
+  it("passes the light theme through to the browser runtime", () => {
+    expect(clientPayload(createPlugin({ theme: "light" })).theme).toBe("light");
+    expect(clientPayload(createPlugin({ theme: "dark" })).theme).toBe("dark");
+  });
+
+  it("falls back to dark for an unknown theme", () => {
+    expect(
+      clientPayload(createPlugin({ theme: "solarized" as never })).theme,
+    ).toBe("dark");
+  });
+});
+
+describe("clickActions option", () => {
+  it("defaults to opening the editor, the file name and the full path", () => {
+    expect(clientPayload(createPlugin()).clickActions).toEqual([
+      "open",
+      "copy-file",
+      "copy-full-path",
+    ]);
+  });
+
+  it("passes an ordered array through and dedupes it", () => {
+    expect(
+      clientPayload(
+        createPlugin({
+          clickActions: [
+            "copy-file",
+            "copy-full-path",
+            "copy-path",
+            "copy-file",
+            "open",
+          ],
+        }),
+      ).clickActions,
+    ).toEqual(["copy-file", "copy-full-path", "copy-path", "open"]);
+  });
+
+  it("accepts a single action as a shorthand", () => {
+    expect(
+      clientPayload(createPlugin({ clickActions: "open" })).clickActions,
+    ).toEqual(["open"]);
+  });
+
+  it("drops unknown actions and falls back to the defaults", () => {
+    expect(
+      clientPayload(createPlugin({ clickActions: ["sidebar"] as never }))
+        .clickActions,
+    ).toEqual(["open", "copy-file", "copy-full-path"]);
+    expect(
+      clientPayload(createPlugin({ clickActions: [] })).clickActions,
+    ).toEqual(["open", "copy-file", "copy-full-path"]);
   });
 });
 

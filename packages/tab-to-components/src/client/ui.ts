@@ -8,25 +8,73 @@
  * has `pointer-events: none`; only the menu re-enables pointer events.
  */
 
-import type { ChainEntry } from "./chain";
-import { formatMarker, formatNameLabel } from "./marker";
+import type { ThemeMode } from "./config";
+import { formatNameLabel } from "./marker";
 
 /** Attribute on the light-DOM host element that owns the shadow root. */
 export const UI_ATTRIBUTE = "data-ttc-ui";
+/** Attribute on the host element carrying the overlay theme: `dark` or `light`. */
+export const THEME_ATTRIBUTE = "data-ttc-theme";
 /** Highest practical z-index (2^31 - 1). */
 export const UI_Z_INDEX = "2147483647";
 
 const FONT_STACK =
   'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace';
 
+/*
+ * The palette is a set of custom properties so the whole overlay (outline,
+ * label, menu and toast) switches with one attribute on the shadow host.
+ * Dark is the original blue-on-black design and is also the default when the
+ * attribute is missing; light darkens the blue accents for contrast on white.
+ */
 const STYLE_TEXT = `
+:host {
+  --ttc-accent: #7aa2ff;
+  --ttc-accent-text: #9db8ff;
+  --ttc-border: rgba(122, 162, 255, 0.4);
+  --ttc-border-label: rgba(122, 162, 255, 0.38);
+  --ttc-surface: rgba(16, 17, 22, 0.98);
+  --ttc-surface-label: rgba(16, 17, 22, 0.97);
+  --ttc-text: #e7e9f0;
+  --ttc-muted: #9aa0ae;
+  --ttc-outline-ring: rgba(8, 10, 16, 0.55);
+  --ttc-outline-glow: rgba(122, 162, 255, 0.16);
+  --ttc-active: rgba(122, 162, 255, 0.2);
+  --ttc-shadow-label: rgba(0, 0, 0, 0.4);
+  --ttc-shadow-menu: rgba(0, 0, 0, 0.55);
+  --ttc-shadow-menu-edge: rgba(0, 0, 0, 0.6);
+  --ttc-shadow-toast: rgba(0, 0, 0, 0.5);
+  --ttc-error-border: rgba(255, 120, 120, 0.55);
+  --ttc-error-text: #ffd7d7;
+  --ttc-color-scheme: dark;
+}
+:host([data-ttc-theme="light"]) {
+  --ttc-accent: #2f5bd7;
+  --ttc-accent-text: #2456c7;
+  --ttc-border: rgba(47, 91, 215, 0.35);
+  --ttc-border-label: rgba(47, 91, 215, 0.32);
+  --ttc-surface: rgba(255, 255, 255, 0.98);
+  --ttc-surface-label: rgba(255, 255, 255, 0.97);
+  --ttc-text: #1b2130;
+  --ttc-muted: #5b6472;
+  --ttc-outline-ring: rgba(15, 23, 42, 0.16);
+  --ttc-outline-glow: rgba(47, 91, 215, 0.14);
+  --ttc-active: rgba(47, 91, 215, 0.12);
+  --ttc-shadow-label: rgba(15, 23, 42, 0.16);
+  --ttc-shadow-menu: rgba(15, 23, 42, 0.18);
+  --ttc-shadow-menu-edge: rgba(15, 23, 42, 0.08);
+  --ttc-shadow-toast: rgba(15, 23, 42, 0.16);
+  --ttc-error-border: rgba(190, 35, 35, 0.45);
+  --ttc-error-text: #b42318;
+  --ttc-color-scheme: light;
+}
 .ttc-outline {
   position: fixed;
   display: none;
   box-sizing: border-box;
-  border: 2px solid #7aa2ff;
+  border: 2px solid var(--ttc-accent);
   border-radius: 3px;
-  box-shadow: 0 0 0 1px rgba(8, 10, 16, 0.55), 0 0 0 4px rgba(122, 162, 255, 0.16);
+  box-shadow: 0 0 0 1px var(--ttc-outline-ring), 0 0 0 4px var(--ttc-outline-glow);
   pointer-events: none;
   z-index: 2;
   will-change: left, top, width, height;
@@ -39,24 +87,24 @@ const STYLE_TEXT = `
   max-width: min(640px, calc(100vw - 24px));
   padding: 5px 8px;
   border-radius: 6px;
-  border: 1px solid rgba(122, 162, 255, 0.38);
-  background: rgba(16, 17, 22, 0.97);
-  color: #e7e9f0;
+  border: 1px solid var(--ttc-border-label);
+  background: var(--ttc-surface-label);
+  color: var(--ttc-text);
   font: 11px/1.35 ${FONT_STACK};
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 8px 24px var(--ttc-shadow-label);
   pointer-events: none;
   z-index: 3;
 }
 .ttc-label-name {
-  color: #9db8ff;
+  color: var(--ttc-accent-text);
   font-weight: 600;
   flex: 0 0 auto;
 }
 .ttc-label-source {
-  color: #9aa0ae;
+  color: var(--ttc-muted);
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -70,11 +118,15 @@ const STYLE_TEXT = `
   overflow: auto;
   padding: 4px;
   border-radius: 8px;
-  border: 1px solid rgba(122, 162, 255, 0.4);
-  background: rgba(16, 17, 22, 0.98);
-  color: #e7e9f0;
+  border: 1px solid var(--ttc-border);
+  background: var(--ttc-surface);
+  color: var(--ttc-text);
   font: 11px/1.4 ${FONT_STACK};
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(0, 0, 0, 0.6);
+  /* Set through a custom property: the host's inline all: initial reset wins
+     over a :host color-scheme declaration. This only affects the menu's
+     scrollbars. */
+  color-scheme: var(--ttc-color-scheme);
+  box-shadow: 0 16px 48px var(--ttc-shadow-menu), 0 0 0 1px var(--ttc-shadow-menu-edge);
   pointer-events: auto;
   z-index: 4;
   outline: none;
@@ -98,17 +150,17 @@ const STYLE_TEXT = `
   pointer-events: auto;
 }
 .ttc-menu-item[data-active] {
-  background: rgba(122, 162, 255, 0.2);
+  background: var(--ttc-active);
 }
 .ttc-menu-name {
   flex: 0 0 auto;
-  color: #9db8ff;
+  color: var(--ttc-accent-text);
   font-weight: 600;
 }
 .ttc-menu-source {
   overflow: hidden;
   text-overflow: ellipsis;
-  color: #9aa0ae;
+  color: var(--ttc-muted);
 }
 .ttc-toast {
   position: fixed;
@@ -120,19 +172,19 @@ const STYLE_TEXT = `
   max-width: min(720px, calc(100vw - 32px));
   padding: 8px 12px;
   border-radius: 8px;
-  border: 1px solid rgba(122, 162, 255, 0.4);
-  background: rgba(16, 17, 22, 0.98);
-  color: #e7e9f0;
+  border: 1px solid var(--ttc-border);
+  background: var(--ttc-surface);
+  color: var(--ttc-text);
   font: 11px/1.4 ${FONT_STACK};
   text-align: center;
   overflow-wrap: anywhere;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 12px 32px var(--ttc-shadow-toast);
   pointer-events: none;
   z-index: 5;
 }
 .ttc-toast[data-kind="error"] {
-  border-color: rgba(255, 120, 120, 0.55);
-  color: #ffd7d7;
+  border-color: var(--ttc-error-border);
+  color: var(--ttc-error-text);
 }
 `;
 
@@ -157,9 +209,23 @@ export interface ToastOptions {
   duration?: number;
 }
 
+/** One row of the overlay's floating menu (chain picker or action picker). */
+export interface MenuItem {
+  /** Primary label: `<Button />` for chain rows, `Open in IDE` for actions. */
+  label: string;
+  /** Secondary detail: the source marker or the text a copy action writes. */
+  detail: string;
+  /** Optional `data-action` value exposing the row kind to tests. */
+  action?: string;
+  /** Run when the row is clicked or activated with Enter/Space. */
+  onActivate: () => void;
+}
+
 export interface MenuOptions {
-  /** Called when a row is activated (click or Enter). */
-  onPick: (entry: ChainEntry, index: number) => void;
+  /** `"chain"` (right click) or `"actions"` (left click), exposed in the DOM. */
+  kind?: "chain" | "actions";
+  /** Accessible label for the menu element. */
+  ariaLabel?: string;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -180,15 +246,15 @@ export class Overlay {
   private readonly menu: HTMLDivElement;
   private readonly toast: HTMLDivElement;
   private toastTimer: ReturnType<typeof setTimeout> | null = null;
-  private menuEntries: ChainEntry[] = [];
+  private menuItems: MenuItem[] = [];
   private menuIndex = 0;
   private menuIsOpen = false;
-  private onPick: ((entry: ChainEntry, index: number) => void) | null = null;
   private destroyed = false;
 
-  constructor(doc: Document) {
+  constructor(doc: Document, theme: ThemeMode = "dark") {
     this.host = doc.createElement("div");
     this.host.setAttribute(UI_ATTRIBUTE, "");
+    this.host.setAttribute(THEME_ATTRIBUTE, theme);
     this.host.style.cssText = [
       "all: initial",
       "position: fixed",
@@ -337,33 +403,46 @@ export class Overlay {
     if (!this.destroyed) this.hide(this.toast);
   }
 
-  /** Open the component chain menu at viewport coordinates (x, y). */
-  showMenu(entries: ChainEntry[], x: number, y: number, options: MenuOptions): void {
-    if (this.destroyed || entries.length === 0) return;
+  /**
+   * Open the floating menu at viewport coordinates (x, y). The same element
+   * serves the component-chain picker (Alt+right-click) and the source action
+   * picker (Alt+left-click); `options.kind` is exposed as `data-ttc-menu`.
+   */
+  showMenu(
+    items: MenuItem[],
+    x: number,
+    y: number,
+    options: MenuOptions = {},
+  ): void {
+    if (this.destroyed || items.length === 0) return;
 
     this.hideHover();
-    this.menuEntries = [...entries];
+    this.menuItems = [...items];
     this.menuIndex = 0;
-    this.onPick = options.onPick;
     this.menu.textContent = "";
+    this.menu.setAttribute("data-ttc-menu", options.kind ?? "chain");
+    if (options.ariaLabel) this.menu.setAttribute("aria-label", options.ariaLabel);
+    else this.menu.removeAttribute("aria-label");
 
-    this.menuEntries.forEach((entry, index) => {
+    this.menuItems.forEach((item, index) => {
       const row = document.createElement("button");
       row.type = "button";
       row.className = "ttc-menu-item";
       row.setAttribute("role", "menuitem");
+      if (item.action !== undefined) row.setAttribute("data-action", item.action);
 
-      const name = document.createElement("span");
-      name.className = "ttc-menu-name";
-      name.textContent = formatNameLabel(entry.name);
+      const label = document.createElement("span");
+      label.className = "ttc-menu-name";
+      label.textContent = item.label;
 
-      const source = document.createElement("span");
-      source.className = "ttc-menu-source";
-      source.textContent = formatMarker(entry.marker);
+      const detail = document.createElement("span");
+      detail.className = "ttc-menu-source";
+      detail.textContent = item.detail;
 
       // Whitespace-only flex children are ignored visually but keep
-      // textContent equal to `<Name />  file:line:column`.
-      row.append(name, document.createTextNode("  "), source);
+      // textContent equal to `<Name />  file:line:column` (chain) or
+      // `Open in IDE  file:line:column` (actions).
+      row.append(label, document.createTextNode("  "), detail);
       row.addEventListener("mouseenter", () => this.setMenuIndex(index));
       // Keep the app from seeing menu interactions, but let the click through
       // to the row listener below.
@@ -407,7 +486,7 @@ export class Overlay {
 
   /** Highlight a menu row (wraps around). */
   setMenuIndex(index: number): void {
-    const count = this.menuEntries.length;
+    const count = this.menuItems.length;
     if (count === 0) return;
     this.menuIndex = ((index % count) + count) % count;
     const rows = Array.from(this.menu.children);
@@ -422,13 +501,12 @@ export class Overlay {
     return this.menuIndex;
   }
 
-  /** Activate (open) a menu row. */
+  /** Activate a menu row (run its action after closing the menu). */
   activateMenuIndex(index: number): void {
-    const entry = this.menuEntries[index];
-    if (!entry) return;
-    const handler = this.onPick;
+    const item = this.menuItems[index];
+    if (!item) return;
     this.closeMenu();
-    handler?.(entry, index);
+    item.onActivate();
   }
 
   /** Move the highlight by `delta` rows. */
@@ -453,7 +531,7 @@ export class Overlay {
         this.setMenuIndex(0);
         return true;
       case "End":
-        this.setMenuIndex(this.menuEntries.length - 1);
+        this.setMenuIndex(this.menuItems.length - 1);
         return true;
       case "Enter":
       case " ":
@@ -471,10 +549,10 @@ export class Overlay {
   closeMenu(): void {
     if (!this.menuIsOpen) return;
     this.menuIsOpen = false;
-    this.menuEntries = [];
+    this.menuItems = [];
     this.menuIndex = 0;
-    this.onPick = null;
     this.menu.textContent = "";
+    this.menu.removeAttribute("aria-label");
     this.hide(this.menu);
   }
 

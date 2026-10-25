@@ -13,6 +13,7 @@ export {
   type EditorCommand,
 } from "./editor.js";
 export {
+  DEFAULT_CLICK_ACTIONS,
   MARKER_ATTR,
   NAME_ATTR,
   type ClientConfig,
@@ -21,6 +22,8 @@ export {
   type EditorOption,
   type EditorTarget,
   type InspectorKey,
+  type TabToComponentsClickAction,
   type TabToComponentsOpenMode,
   type TabToComponentsOptions,
+  type TabToComponentsTheme,
 } from "./types.js";

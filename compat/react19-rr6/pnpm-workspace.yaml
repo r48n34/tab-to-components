@@ -1,0 +1,13 @@
+packages: []
+
+# Isolated install root: React Router v6's react-router must not collide with
+# the v7/v8 copies in the React 19 playground workspace.
+storeDir: ../../.pnpm-store
+cacheDir: ../../.pnpm-cache
+stateDir: ../../.pnpm-state
+packageManagerStrict: false
+strictPeerDependencies: false
+autoInstallPeers: true
+nodeLinker: hoisted
+allowBuilds:
+  esbuild: false
