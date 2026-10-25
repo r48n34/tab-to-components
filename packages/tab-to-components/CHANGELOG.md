@@ -37,7 +37,7 @@ This project follows [Semantic Versioning](https://semver.org/).
 - The headless-Chrome e2e now opens the picker, copies the page file name and full path, verifies the exact clipboard text before choosing Open in IDE, and exports its helpers so the compatibility matrix reuses the same browser flow.
 - The React 18/19 compatibility runtime check pins `clickActions: ["open"]` to keep that check focused on the fiber walk.
 - The `rr8` playground now exercises every click action and the light theme.
-- Added `pnpm install:compat` for the four isolated compatibility workspaces and ignored their generated build/cache directories.
+- Added `pnpm install:compat` for the four isolated compatibility workspaces and ignored their generated build/cache directories. The fixtures link the package (`link:`) instead of installing a packed `file:` copy, so a clean checkout no longer snapshots the package before `dist/` exists and the matrix always tests the current `pnpm build`.
 - Raised the `verify:package` packed-payload budget from 112 KiB to 120 KiB to fit the source actions, the theme palette and the documentation (the packed artifact is 118.5 KiB).
 
 ### Documentation

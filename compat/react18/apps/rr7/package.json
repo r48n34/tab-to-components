@@ -17,7 +17,7 @@
     "@react-router/dev": "7.18.4",
     "@types/react": "18.3.31",
     "@types/react-dom": "18.3.7",
-    "tab-to-components": "file:../../../../packages/tab-to-components",
+    "tab-to-components": "link:../../../../packages/tab-to-components",
     "typescript": "5.9.3",
     "vite": "8.3.5"
   }

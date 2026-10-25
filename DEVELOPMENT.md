@@ -16,6 +16,13 @@ Install it with `-D` and keep it in `vite.config.ts`; never import it from appli
 
 This package lives in a pnpm workspace together with six playground apps (React Router v7/v8 on Vite 7/8, plain Vite apps and a TanStack Start app) plus isolated compatibility workspaces under `compat/` for React 18, React Router v6 and Remix v2.
 
+The `compat/` fixtures depend on this package with `link:`, not `file:`. A `file:` dependency makes
+pnpm pack the package during `pnpm install:compat`; on a fresh checkout that snapshot is taken before
+`pnpm build`, so it contains no `dist/` and Vite fails with
+`Failed to resolve entry for package "tab-to-components"`. Linking resolves the workspace package
+directly, so the install/build order does not matter and `pnpm test:compat` always exercises the
+current build.
+
 ```bash
 pnpm install
 pnpm install:compat   # isolated React 18 / RR6 / Remix install roots

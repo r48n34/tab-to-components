@@ -36,8 +36,8 @@ importers:
         specifier: 18.3.7
         version: 18.3.7(@types/react@18.3.31)
       tab-to-components:
-        specifier: file:../../../../packages/tab-to-components
-        version: file:../../packages/tab-to-components(vite@8.3.5(esbuild@0.28.2)(jiti@2.7.0))
+        specifier: link:../../../../packages/tab-to-components
+        version: link:../../../../packages/tab-to-components
       typescript:
         specifier: 5.9.3
         version: 5.9.3
@@ -70,8 +70,8 @@ importers:
         specifier: 6.1.2
         version: 6.1.2(vite@8.3.5(esbuild@0.28.2)(jiti@2.7.0))
       tab-to-components:
-        specifier: file:../../../../packages/tab-to-components
-        version: file:../../packages/tab-to-components(vite@8.3.5(esbuild@0.28.2)(jiti@2.7.0))
+        specifier: link:../../../../packages/tab-to-components
+        version: link:../../../../packages/tab-to-components
       typescript:
         specifier: 5.9.3
         version: 5.9.3
@@ -98,8 +98,8 @@ importers:
         specifier: 6.1.2
         version: 6.1.2(vite@8.3.5(esbuild@0.28.2)(jiti@2.7.0))
       tab-to-components:
-        specifier: file:../../../../packages/tab-to-components
-        version: file:../../packages/tab-to-components(vite@8.3.5(esbuild@0.28.2)(jiti@2.7.0))
+        specifier: link:../../../../packages/tab-to-components
+        version: link:../../../../packages/tab-to-components
       typescript:
         specifier: 5.9.3
         version: 5.9.3
@@ -1229,12 +1229,6 @@ packages:
     resolution: {integrity: sha512-8h30Qy2cpYkcXgByHNpV4+jp609bU3ic7MqnfyLQ2Fpa8BgjIaI2zfsDKAIbwm8DcYDrCLqm5izF5KeL2nxdvg==}
     engines: {node: '>=20.16.0'}
     hasBin: true
-
-  tab-to-components@file:../../packages/tab-to-components:
-    resolution: {directory: ../../packages/tab-to-components, type: directory}
-    engines: {node: '>=20'}
-    peerDependencies:
-      vite: ^6.0.0 || ^7.0.0 || ^8.0.0
 
   tinyglobby@0.2.17:
     resolution: {integrity: sha512-wXR/dYpcqKmfWpEdZjiKJOwCNFndD0DMnrW/cYjVGttEkBfVgcLFHoNrlj47mjOVic9yyNu65alsgF4NQyTa2g==}
@@ -2440,13 +2434,6 @@ snapshots:
   source-map@0.7.6: {}
 
   srvx@1.0.7: {}
-
-  tab-to-components@file:../../packages/tab-to-components(vite@8.3.5(esbuild@0.28.2)(jiti@2.7.0)):
-    dependencies:
-      '@babel/parser': 7.29.11
-      '@babel/types': 7.29.11
-      magic-string: 0.30.21
-      vite: 8.3.5(esbuild@0.28.2)(jiti@2.7.0)
 
   tinyglobby@0.2.17:
     dependencies:
