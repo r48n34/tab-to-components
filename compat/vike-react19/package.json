@@ -1,0 +1,26 @@
+{
+  "name": "compat-vike-react19",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vike dev",
+    "build": "vike build",
+    "preview": "vike preview",
+    "verify": "node verify.mjs",
+    "verify:build": "node verify.mjs --scan-build"
+  },
+  "dependencies": {
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "vike": "0.4.268",
+    "vike-react": "0.6.31"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "tab-to-components": "link:../../packages/tab-to-components",
+    "typescript": "5.9.3",
+    "vite": "8.3.5"
+  }
+}

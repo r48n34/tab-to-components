@@ -3,6 +3,22 @@
 All notable changes to `tab-to-components` are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Compatibility matrix
+
+- Added Next.js to the compatibility matrix as **not applicable** for React 18 and React 19. `next dev` runs Turbopack (default in Next.js 16) or webpack with the SWC-based Next.js Compiler, not Vite, so the marker transform, virtual client runtime and `__ttc/open-in-editor` endpoint cannot be installed. Next.js 16.4.3 accepts React 18.2+ for the Pages Router and React 19 for the App Router — the React version is not the blocker.
+- Both READMEs and the generated matrix now describe Next.js alongside Remix v1 as a non-Vite framework (10-framework × 2-React table).
+
+### Astro and Vike
+
+- **Astro 7 works with React 18 and React 19.** Tested Astro 7.4.2 + `@astrojs/react` 7.1.1 (Vite 8.3.5) with React 18.3.1 and React 19.3.1 in the isolated `compat/astro-react18` and `compat/astro-react19` fixtures. The plugin is installed through Astro's `vite.plugins` option in `astro.config.mjs`, and both the dev server and the production build run through Astro's documented JavaScript API (`dev()` / `build()`). For both majors: version isolation, dev server, source markers, overlay module, SSR markup, the shared React fiber/Alt+click runtime check and the production-build cleanliness scan all pass. `.astro` markup is not instrumented — only React/JSX modules inside hydrated islands are — and `data-ttc-name` reaches SSR HTML only when the component forwards props to a DOM node.
+- **Vike 0.4 works with React 19; React 18 is blocked upstream.** Tested Vike 0.4.268 + `vike-react` 0.6.31 on React 19.3.1 (Vite 8.3.5) in `compat/vike-react19`. Version isolation, dev server, markers, overlay module, SSR markup, the shared runtime check and a production scan of both `dist/client` and `dist/server` all pass; no dev-only strings reach the build. `vike-react@0.6.31` declares `peer react ">=19"` / `peer react-dom ">=19"`, so no React 18 fixture exists.
+- **Edge frameworks were evaluated but not added as matrix cells.** RedwoodJS classic is upstream-blocked by Vite 5: its `@redwoodjs/vite` package pins Vite 5.4.20, below this plugin's Vite 6–8 peer range (the Vite-based RedwoodSDK is still emerging). Waku is on `1.0.0-rc.x` (1.0.0-rc.4 at the time of writing) and is deferred until a stable release. Shopify Hydrogen is built on React Router 7, so it inherits the React Router v7 row rather than a separate entry. None of these three was tested, and no fixture was created.
+- **Honest matrix status:** the verified 20-cell run (10 frameworks × 2 React majors) reports **13 tested (12 works, 1 works-not-verified), 0 failing**, 3 upstream-unsupported cells and 4 not-applicable cells. The works-not-verified cell is Remix v2 on React 18, whose dev/build/SSR checks need esbuild, which this sandbox blocks. Every Browser cell is reported as ⏭ skipped, never passed: the Astro/Vike fixtures do not implement the counter + three-row action-picker contract that the Chrome e2e runner asserts, and headless Chrome could not run in this environment for any cell. The shared Runtime ✅ is the generic React fiber/Alt+click harness check, not framework-specific browser hydration.
+- `pnpm test:compat` now builds and scans the Astro and Vike fixtures, `pnpm install:compat` installs **seven** isolated fixture roots, and CI caches all seven lockfiles.
+- Documentation: both READMEs gained Astro and Vike setup snippets, a 10-framework compatibility table, the React 18/19 and `.astro` constraints, the Vite 5/RedwoodSDK/Waku/Hydrogen notes and updated reproduce commands. `docs/compatibility-matrix.md` was regenerated from the verified run's recorded JSON (package `0.4.1`) with the browser-tier provenance stated explicitly.
+
 ## 0.4.1 - 2026-10-25
 
 Security and reliability release; no API changes.

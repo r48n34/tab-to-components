@@ -1,0 +1,5 @@
+# Astro writes generated types/settings here on dev/build.
+.astro/
+# Headless-Chrome profile + logs from the optional fixture scripts.
+.tmp/
+*.log

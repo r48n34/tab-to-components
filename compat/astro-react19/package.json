@@ -1,0 +1,26 @@
+{
+  "name": "compat-astro-react19",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "verify:dev": "node scripts/verify-dev.mjs",
+    "verify:build": "node scripts/verify-build.mjs",
+    "verify:browser": "node scripts/verify-browser.mjs"
+  },
+  "dependencies": {
+    "@astrojs/react": "7.1.1",
+    "astro": "7.4.2",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "tab-to-components": "link:../../packages/tab-to-components",
+    "typescript": "5.9.3",
+    "vite": "8.3.5"
+  }
+}

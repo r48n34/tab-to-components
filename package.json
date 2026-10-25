@@ -11,7 +11,7 @@
     "test:dev-only": "pnpm --filter tab-to-components test:dev-only",
     "test:integration": "pnpm build && pnpm --filter tab-to-components test:integration",
     "test:matrix": "pnpm build && pnpm --filter tab-to-components test:matrix",
-    "install:compat": "pnpm --dir compat/react18 install --frozen-lockfile && pnpm --dir compat/react18-rr6 install --frozen-lockfile && pnpm --dir compat/react19-rr6 install --frozen-lockfile && pnpm --dir compat/remix2-react18 install --frozen-lockfile",
+    "install:compat": "pnpm --dir compat/react18 install --frozen-lockfile && pnpm --dir compat/react18-rr6 install --frozen-lockfile && pnpm --dir compat/react19-rr6 install --frozen-lockfile && pnpm --dir compat/remix2-react18 install --frozen-lockfile && pnpm --dir compat/astro-react18 install --frozen-lockfile && pnpm --dir compat/astro-react19 install --frozen-lockfile && pnpm --dir compat/vike-react19 install --frozen-lockfile",
     "test:compat": "pnpm build && node scripts/compat-matrix.mjs",
     "test:compat:full": "pnpm build && node scripts/compat-matrix.mjs --browser --write-doc",
     "verify:package": "pnpm build && pnpm --filter tab-to-components verify:package",

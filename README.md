@@ -5,16 +5,16 @@
 
 **Alt+click any React element in your dev server: jump to the JSX that rendered it, or copy its file name to the clipboard.**
 
-A dev-only Vite plugin for the modern React stack: **React 18 & 19**, **Vite 6, 7 & 8**, **React Router v6 / v7 / v8**, **TanStack Start**, and **Remix v2** — including streamed SSR, where the other click-to-component tools stopped working.
+A dev-only Vite plugin for the modern React stack: **React 18 & 19**, **Vite 6, 7 & 8**, **React Router v6 / v7 / v8**, **TanStack Start**, **Astro 7** (React islands), **Vike 0.4** (`vike-react`), and **Remix v2** — including streamed SSR, where the other click-to-component tools stopped working.
 
 
 ![Hovering the count button: the overlay outlines it and shows the Button component's source location, src/App.tsx:20:9](https://github.com/r48n34/tab-to-components/raw/main/docs/demo-hover.png)
 
 - Zero app-code changes — no `entry.client.tsx` edit, no root route edit, no React runtime patching.
-- Works in `react-router dev` (SSR, streaming, SPA mode), TanStack Start, Remix v2 **and** plain Vite.
+- Works in `react-router dev` (SSR, streaming, SPA mode), TanStack Start, Astro islands, Vike SSR, Remix v2 **and** plain Vite.
 - **Opens VS Code by default**; `editor: "cursor" | "trae" | "webstorm" | …`, a command template, a launcher function, or `"auto"` for auto-detection.
 - **Open or copy:** the Alt+click picker can open the source in your IDE or copy the file name (`MyBox.tsx`), the project-relative path, the full absolute path (`D:/proj/app/components/MyBox.tsx`), or `path:line:column` to the clipboard.
-- Never ships to production: no markers, no client code, no extra imports in `vite build` / `react-router build`.
+- Never ships to production: no markers, no client code, no extra imports in `vite build`, `react-router build`, `astro build` or `vike build`.
 
 ## Install
 
@@ -80,6 +80,38 @@ export default defineConfig({
 ```
 
 The plugin runs before TanStack Start's route-module transform, so both the server-rendered markup and the client route modules carry source markers. The overlay runtime is injected into the client entry with no `entry.client.tsx` edit.
+
+### Astro 7 (React islands)
+
+```ts
+// astro.config.mjs
+import react from "@astrojs/react";
+import { defineConfig } from "astro/config";
+import { tabToComponents } from "tab-to-components";
+
+export default defineConfig({
+  integrations: [react()],
+  vite: { plugins: [tabToComponents()] },
+});
+```
+
+Astro owns the Vite config, so the plugin goes in Astro's `vite.plugins` option. Markers and the overlay apply to React/JSX modules inside hydrated islands; `.astro` markup itself is not instrumented.
+
+### Vike 0.4 (vike-react)
+
+```ts
+// vite.config.ts
+import react from "@vitejs/plugin-react";
+import { defineConfig } from "vite";
+import vike from "vike/plugin";
+import { tabToComponents } from "tab-to-components";
+
+export default defineConfig({
+  plugins: [tabToComponents(), react(), vike()],
+});
+```
+
+Vike is tested with the `vike-react` renderer on React 19. `vike-react` 0.6 declares `peer react ">=19"` / `peer react-dom ">=19"`, so React 18 is not supported there.
 
 ### Remix v2 (Vite)
 
@@ -298,23 +330,35 @@ If the editor cannot be launched, the terminal receives the error and a toast in
 
 ## Compatibility
 
-Verified against real dev servers, SSR renders, production builds and headless-Chrome Alt+clicks. The full 7-framework × 2-React evidence table, per-check results and resolved versions live in [docs/compatibility-matrix.md](https://github.com/r48n34/tab-to-components/blob/main/docs/compatibility-matrix.md); regenerate it with `pnpm test:compat:full`.
+Verified against real dev servers, SSR renders and production builds. The full 10-framework × 2-React evidence table, per-check results and resolved versions live in [docs/compatibility-matrix.md](https://github.com/r48n34/tab-to-components/blob/main/docs/compatibility-matrix.md); regenerate it with `pnpm install:compat` (seven isolated fixture roots) and `pnpm test:compat:full`, or run the same matrix without the Chrome tier via `pnpm test:compat`. The matrix also records an optional headless-Chrome Alt+click tier: a Browser cell is ✅ only when Chrome actually ran, and is reported as ⏭ skipped — never passed — when it cannot launch.
 
-| | Verified |
+| | Support |
 | --- | --- |
 | React | **18.3.1** and **19.3.1** |
-| Vite | **8.3.5** on the Vite / React Router / TanStack Start rows; **7.3.7** through `pnpm test:matrix`; **6.4.5** through Remix v2 |
+| Vite | **8.3.5** on the Vite / React Router / TanStack Start / Astro / Vike rows; **7.3.7** through `pnpm test:matrix`; **6.4.5** through Remix v2 |
 | React Router | v6 **6.30.6** (SPA), v7 **7.18.4** and v8 **8.5.0** framework mode (SSR) |
 | TanStack Start | **1.169.4** (TanStack Router **1.170.46**) on Vite 8 |
+| Astro | **7.4.2** with `@astrojs/react` **7.1.1** on React **18.3.1** and **19.3.1**; React islands only (`.astro` markup is not instrumented) |
+| Vike | **0.4.268** with `vike-react` **0.6.31** on React **19.3.1**; React 18 is outside the renderer's peer range |
+| RedwoodJS | Classic **not supported**: its `@redwoodjs/vite` package pins **Vite 5**, below this plugin's Vite 6+ range; the Vite-based **RedwoodSDK** is emerging and not yet covered |
+| Waku | **1.0.0-rc.x** (rc.4 at the time of writing) — **deferred** until a stable release; not tested |
+| Shopify Hydrogen | Built on **React Router 7**, so it inherits the React Router v7 row instead of a separate matrix entry |
 | Remix | v2 **2.17.5** on Vite 6 (React 18 only); v1 has no Vite integration |
+| Next.js | **16.4.3** — **not supported**: `next dev` uses Turbopack (default) or webpack, not Vite; Next.js 16 accepts React 18.2+ (Pages Router) and React 19 (App Router) upstream |
 | `@vitejs/plugin-react` | **6.1.2** on Vite 8; 5.x for the Vite 7 suite |
 | Editors | **VS Code (`code`) by default**; presets for the VS Code family (incl. **Cursor/Trae**), JetBrains, Zed, Sublime, Vim, Emacs; command templates and custom launcher functions; `editor: "auto"` for Vite's `launch-editor` auto-detection |
 
-Known upstream constraints (not plugin bugs):
+Known compatibility constraints (not plugin bugs):
 
 - **React Router v8** declares `peer react >=19.2.7`, so **React 18 is not supported** there.
 - **Remix v2** declares `peer react ^18.0.0` and supports Vite 5/6, so **React 19 is not supported** there.
 - **Remix v1** uses a classic esbuild compiler, not Vite, so this Vite plugin cannot run in a Remix v1 app.
+- **Vike + React 18 is blocked upstream**: `vike-react@0.6.31` declares `peer react ">=19"` / `peer react-dom ">=19"`, so React 18 is not supported there.
+- **Astro** only instruments React/JSX modules: `.astro` markup gets no markers, so the overlay is available on pages that hydrate a React island.
+- **RedwoodJS classic is upstream-blocked by Vite 5**: its `@redwoodjs/vite` package pins Vite 5, below this plugin's Vite 6+ range. The Vite-based **RedwoodSDK** is emerging and not yet in the matrix.
+- **Waku** is still on `1.0.0-rc.x` (rc.4 at the time of writing), so it is deferred until a stable release.
+- **Shopify Hydrogen** runs on React Router 7 and inherits the React Router v7 row rather than a separate matrix entry.
+- **Next.js** has no Vite integration: `next dev` runs Turbopack (default in Next.js 16) or webpack with the SWC-based Next.js Compiler, so the plugin's transform, virtual client module and editor endpoint cannot be installed. React is not the blocker — Next.js 16.4.3 accepts React 18.2+ (Pages Router) and React 19 (App Router).
 
 ---
 
@@ -330,7 +374,7 @@ Known upstream constraints (not plugin bugs):
 ## Troubleshooting
 
 **Nothing happens when I Alt+click.**
-The plugin is dev-only. Make sure you run the dev server (not `vite preview`/`build`), that `tabToComponents()` is in `vite.config.ts`, and that the startup banner is printed. If the file you click lives in `node_modules` or is generated MDX output, it is intentionally not instrumented.
+The plugin is dev-only. Make sure you run the dev server (not `vite preview`/`build`), that `tabToComponents()` is in `vite.config.ts` (or Astro's `vite.plugins`), and that the startup banner is printed. If the file you click lives in `node_modules` or is generated MDX output, it is intentionally not instrumented. Astro `.astro` markup is not instrumented either — only the React/JSX modules inside hydrated islands are.
 
 **The editor does not open.**
 The default editor is **VS Code** (`code`), so `code` must be on `PATH` (in VS Code: *Shell Command: Install 'code' command in PATH*). Watch the terminal for a `Could not launch "code"` message and the browser network tab for `__ttc/open-in-editor?file=…`. To use another IDE, pass `editor: "cursor"` / `"trae"` / `"webstorm"` / a command template / a function. To fall back to Vite's detection + `LAUNCH_EDITOR`, pass `editor: "auto"`. The toast shows the exact path to open manually.
@@ -345,7 +389,7 @@ The plugin annotates server-rendered markup by default so hydration stays consis
 Markers are relative to the Vite `config.root`. Run the plugin in the app's own Vite config, or scope it with `include`. `node_modules` and `/@fs/` paths outside the root are never instrumented.
 
 **Production build?**
-Nothing is injected. The plugin is `apply: "serve"`, and every hook independently refuses to run for a build command, so a stripped or wrapped plugin registration still cannot emit markers, the virtual client module or the browser runtime. The integration suite builds plain Vite and React Router 7/8 apps and scans their output, and `pnpm verify:package` repeats the check against the packed npm artifact.
+Nothing is injected. The plugin is `apply: "serve"`, and every hook independently refuses to run for a build command, so a stripped or wrapped plugin registration still cannot emit markers, the virtual client module or the browser runtime. The integration suite builds plain Vite and React Router 7/8 apps, `pnpm test:compat` builds the Astro, Vike, Remix and TanStack fixtures and scans their output, and `pnpm verify:package` repeats the check against the packed npm artifact.
 
 ---
 
@@ -354,7 +398,11 @@ Nothing is injected. The plugin is `apply: "serve"`, and every hook independentl
 - **`array.map()` rows** open the JSX inside the callback — the only location that exists in the source — not the row's data.
 - **MDX and pre-compiled dependencies** are not instrumented; the component chain still includes the app-level usages that render them.
 - **React Server Components** (`react-router/rsc`) are best-effort in 0.1: markers work, the overlay is client-only.
+- **Astro** markers cover React/JSX modules in hydrated islands; `.astro` markup itself is not instrumented.
+- **Vike** is supported with the `vike-react` renderer on React 19 only; React 18 is outside its peer range.
+- **RedwoodJS classic**, **Waku** and **Shopify Hydrogen** are not separately tested: Redwood classic is upstream-blocked by Vite 5, Waku is still pre-1.0, and Hydrogen follows the React Router 7 row.
 - **Remix v1** is not supported: it predates Remix's Vite integration and uses its classic esbuild compiler.
+- **Next.js** is not supported: it runs its own Turbopack/webpack pipeline instead of Vite, so markers and the overlay cannot be injected.
 - **React Router v8 + React 18** and **Remix v2 + React 19** are outside those frameworks' declared peer ranges, so the plugin does not claim them.
 - Markers are dev-only `data-ttc` / `data-ttc-name` attributes: they are visible in dev HTML and the DOM, and never in production output.
 

@@ -1,0 +1,15 @@
+packages: []
+
+# Isolated install root: this Astro 7 + React 19 fixture is deliberately
+# outside the root pnpm workspace so its React/Vite versions cannot collide
+# with the playground or the other compat fixtures. Mirrors the layout of
+# compat/react19-rr6.
+storeDir: ../../.pnpm-store
+cacheDir: ../../.pnpm-cache
+stateDir: ../../.pnpm-state
+packageManagerStrict: false
+strictPeerDependencies: false
+autoInstallPeers: true
+nodeLinker: hoisted
+allowBuilds:
+  esbuild: false

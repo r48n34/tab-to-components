@@ -36,6 +36,9 @@ jobs:
             compat/react18-rr6/pnpm-lock.yaml
             compat/react19-rr6/pnpm-lock.yaml
             compat/remix2-react18/pnpm-lock.yaml
+            compat/astro-react18/pnpm-lock.yaml
+            compat/astro-react19/pnpm-lock.yaml
+            compat/vike-react19/pnpm-lock.yaml
 
       - name: Install
         run: pnpm install --frozen-lockfile

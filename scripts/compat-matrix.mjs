@@ -2,19 +2,21 @@
 // Framework / React compatibility matrix for `tab-to-components`.
 //
 // For every viable combination of React 18/19 and Vite / React Router v6/v7/v8
-// / TanStack Start / Remix v2 this harness:
+// / TanStack Start / Remix v2 / Astro 7 / Vike 0.4 this harness:
 //   1. resolves the *installed* versions and proves each framework package
 //      resolves the intended React copy (not a hoisted one from another major),
-//   2. boots the fixture's own Vite dev server in-process and checks source
-//      markers, the overlay import and the virtual client runtime,
+//   2. boots the fixture's own dev server in-process — a bare Vite server, or
+//      the framework's documented JavaScript API for Astro/Vike — and checks
+//      source markers, the overlay import and the virtual client runtime,
 //   3. checks SSR markup for framework-mode apps,
 //   4. exercises the real-React fiber walk and Alt+click with happy-dom,
 //   5. builds the fixture for production and scans the output for dev leakage,
 //   6. optionally runs the existing headless-Chrome e2e runner.
 //
 // Cells that are impossible upstream (React Router v8 needs React >= 19.2.7,
-// Remix v2 needs React ^18, Remix v1 has no Vite plugin) are reported as
-// unsupported / not applicable instead of being silently skipped.
+// Remix v2 needs React ^18) or cannot host a Vite plugin at all (Remix v1's
+// classic esbuild compiler, Next.js's Turbopack/webpack pipeline) are reported
+// as unsupported / not applicable instead of being silently skipped.
 //
 // Usage (from the repo root, after `pnpm build`):
 //   node scripts/compat-matrix.mjs
@@ -171,6 +173,32 @@ const MATRIX = [
     reactPeers: ["@remix-run/react", "@remix-run/dev"],
   },
   {
+    id: "astro-react18",
+    framework: "Astro 7 (React islands, SSR)",
+    frameworkShort: "Astro",
+    reactMajor: 18,
+    dir: "compat/astro-react18",
+    pageModule: "/src/components/App.tsx",
+    pageFile: "src/components/App.tsx",
+    componentFile: "src/components/Button.tsx",
+    ssr: true,
+    // Astro owns the Vite config, so the plugin is loaded through
+    // `astro.config.mjs` (`vite.plugins`) and the dev server must be started
+    // with Astro's own JavaScript API instead of a bare `vite.createServer`.
+    devServer: "astro",
+    build: "astro",
+    expectedVersions: {
+      react: "18.3.1",
+      "react-dom": "18.3.1",
+      astro: "7.4.2",
+      "@astrojs/react": "7.1.1",
+      vite: "8.3.5",
+    },
+    reactPeers: ["@astrojs/react"],
+    browserSkipReason:
+      "the Chrome e2e runner asserts the counter + 3-row action picker contract of the playground apps; this Astro fixture renders a static island with clickActions [\"open\"], so it would need a different browser contract",
+  },
+  {
     id: "vite-react19",
     framework: "Vite + @vitejs/plugin-react",
     frameworkShort: "Vite",
@@ -282,6 +310,59 @@ const MATRIX = [
     reactPeers: ["@tanstack/react-start", "@tanstack/react-router"],
   },
   {
+    id: "astro-react19",
+    framework: "Astro 7 (React islands, SSR)",
+    frameworkShort: "Astro",
+    reactMajor: 19,
+    dir: "compat/astro-react19",
+    pageModule: "/src/components/App.tsx",
+    pageFile: "src/components/App.tsx",
+    componentFile: "src/components/Button.tsx",
+    ssr: true,
+    // Astro owns the Vite config, so the plugin is loaded through
+    // `astro.config.mjs` (`vite.plugins`) and the dev server must be started
+    // with Astro's own JavaScript API instead of a bare `vite.createServer`.
+    devServer: "astro",
+    build: "astro",
+    expectedVersions: {
+      react: "19.3.1",
+      "react-dom": "19.3.1",
+      astro: "7.4.2",
+      "@astrojs/react": "7.1.1",
+      vite: "8.3.5",
+    },
+    reactPeers: ["@astrojs/react"],
+    browserSkipReason:
+      "the Chrome e2e runner asserts the counter + 3-row action picker contract of the playground apps; this Astro fixture renders a static island with clickActions [\"open\"], so it would need a different browser contract",
+  },
+  {
+    id: "vike-react19",
+    framework: "Vike 0.4 + vike-react (SSR)",
+    frameworkShort: "Vike",
+    reactMajor: 19,
+    dir: "compat/vike-react19",
+    pageModule: "/pages/index/+Page.tsx",
+    pageFile: "pages/index/+Page.tsx",
+    componentFile: "src/components/Button.tsx",
+    ssr: true,
+    // Vike documents `dev()` / `build()` on `vike/api`; a plain
+    // `vite.createServer()` serves the same dev URLs but cannot produce Vike's
+    // orchestrated dist/client + dist/server build.
+    devServer: "vike",
+    build: "vike",
+    expectedVersions: {
+      react: "19.3.1",
+      "react-dom": "19.3.1",
+      vike: "0.4.268",
+      "vike-react": "0.6.31",
+      vite: "8.3.5",
+      "@vitejs/plugin-react": "6.1.2",
+    },
+    reactPeers: ["vike-react"],
+    browserSkipReason:
+      "the Chrome e2e runner asserts the counter + 3-row action picker contract of the playground apps; this Vike fixture renders a static page with clickActions [\"open\"], so it would need a different browser contract",
+  },
+  {
     id: "rr8-react18",
     framework: "React Router v8 (framework, SSR)",
     frameworkShort: "React Router v8",
@@ -290,6 +371,16 @@ const MATRIX = [
     reason:
       "react-router@8.5.0 declares peer react >=19.2.7 (and react-dom >=19.2.7), so React 18 cannot be installed without forcing peers.",
     peer: "react >=19.2.7",
+  },
+  {
+    id: "vike-react18",
+    framework: "Vike 0.4 + vike-react (SSR)",
+    frameworkShort: "Vike",
+    reactMajor: 18,
+    status: "unsupported",
+    reason:
+      "vike-react@0.6.31 declares peer react \">=19\" and peer react-dom \">=19\", so React 18 is outside the vike-react renderer's supported range.",
+    peer: "react >=19",
   },
   {
     id: "remix2-react19",
@@ -319,6 +410,26 @@ const MATRIX = [
     reason:
       "@remix-run/dev@1.19.1 has no Vite plugin (its classic esbuild compiler is not Vite), so a Vite plugin cannot run in a Remix v1 app.",
   },
+  {
+    id: "nextjs-react18",
+    framework: "Next.js (Turbopack/webpack)",
+    frameworkShort: "Next.js",
+    reactMajor: 18,
+    status: "not-applicable",
+    reason:
+      "Next.js does not use Vite: next dev runs Turbopack (default in Next.js 16) or webpack with the SWC-based Next.js Compiler, so there is no Vite hook for the marker transform or overlay runtime. Next.js 16.4.3 accepts React 18.2+ for the Pages Router, but this plugin cannot run there.",
+    peer: "react ^18.2.0 || 19.0.0-rc-de68d2f4-20241204 || ^19.0.0",
+  },
+  {
+    id: "nextjs-react19",
+    framework: "Next.js (Turbopack/webpack)",
+    frameworkShort: "Next.js",
+    reactMajor: 19,
+    status: "not-applicable",
+    reason:
+      "Next.js does not use Vite: next dev runs Turbopack (default in Next.js 16) or webpack with the SWC-based Next.js Compiler, so there is no Vite hook for the marker transform or overlay runtime. Next.js 16.4.3 accepts React 19 for the App Router, but this plugin cannot run there.",
+    peer: "react ^18.2.0 || 19.0.0-rc-de68d2f4-20241204 || ^19.0.0",
+  },
 ];
 
 const FRAMEWORK_ROWS = [
@@ -327,8 +438,11 @@ const FRAMEWORK_ROWS = [
   { key: "rr7", label: "React Router v7 (framework, SSR)" },
   { key: "rr8", label: "React Router v8 (framework, SSR)" },
   { key: "tanstack", label: "TanStack Start (SSR)" },
+  { key: "astro", label: "Astro 7 (React islands, SSR)" },
+  { key: "vike", label: "Vike 0.4 + vike-react (SSR)" },
   { key: "remix1", label: "Remix v1 (classic compiler)" },
   { key: "remix2", label: "Remix v2 (Vite 6, SSR)" },
+  { key: "nextjs", label: "Next.js (Turbopack/webpack)" },
 ];
 
 const STATUS = {
@@ -544,6 +658,72 @@ async function loadVite(fixtureDirPath) {
   return await import(pathToFileURL(viteEntry).href);
 }
 
+/**
+ * Import the fixture's own Astro JavaScript API. Astro's telemetry records a
+ * global config file under the user profile on first run, which a locked-down
+ * CI/sandbox cannot create; disabling it keeps the harness self-contained.
+ */
+async function loadAstro(fixtureDirPath) {
+  process.env.ASTRO_TELEMETRY_DISABLED ??= "1";
+  const astroEntry = requireFrom(fixtureDirPath).resolve("astro");
+  return await import(pathToFileURL(astroEntry).href);
+}
+
+/**
+ * Start a fixture's dev server through the adapter the framework documents.
+ * Returns `{ base, close }`; the caller must always close it.
+ */
+async function startDevServer(cell, dir) {
+  if (cell.devServer === "astro") {
+    // Astro owns the Vite config, so the server must be built from
+    // astro.config.mjs (which installs the plugin through `vite.plugins`).
+    // `dev()` is Astro's documented JavaScript API and is what `astro dev` runs.
+    const astro = await loadAstro(dir);
+    const server = await astro.dev({
+      root: dir,
+      logLevel: "error",
+      server: { port: 0, strictPort: false, host: "127.0.0.1" },
+    });
+    return {
+      base: server.resolvedUrls?.local?.[0],
+      close: () => server.stop(),
+    };
+  }
+
+  if (cell.devServer === "vike") {
+    // `dev()` on `vike/api` is the documented JavaScript API that `vike dev`
+    // itself calls; Vike installs its own SSR middleware through the plugin.
+    const api = await import(
+      pathToFileURL(requireFrom(dir).resolve("vike/api")).href
+    );
+    const { viteServer } = await api.dev({
+      startupLog: false,
+      viteConfig: {
+        root: dir,
+        logLevel: "error",
+        server: { port: 0, strictPort: false, host: "127.0.0.1" },
+      },
+    });
+    return {
+      base: viteServer.resolvedUrls?.local?.[0],
+      close: () => closeServer(viteServer, dir),
+    };
+  }
+
+  const vite = await loadVite(dir);
+  const server = await vite.createServer({
+    root: dir,
+    configFile: path.join(dir, "vite.config.ts"),
+    logLevel: "error",
+    server: { port: 0, strictPort: false, host: "127.0.0.1" },
+  });
+  await server.listen();
+  return {
+    base: server.resolvedUrls?.local?.[0],
+    close: () => closeServer(server, dir),
+  };
+}
+
 function normalizeBase(base) {
   return base.endsWith("/") ? base : `${base}/`;
 }
@@ -647,17 +827,10 @@ async function runDevChecks(cell) {
     nodeModulesUntouched: notApplicable("not checked"),
   };
 
-  const vite = await loadVite(dir);
-  const server = await vite.createServer({
-    root: dir,
-    configFile: path.join(dir, "vite.config.ts"),
-    logLevel: "error",
-    server: { port: 0, strictPort: false, host: "127.0.0.1" },
-  });
+  const server = await startDevServer(cell, dir);
 
   try {
-    await server.listen();
-    const base = server.resolvedUrls?.local?.[0];
+    const base = server.base;
     if (!base) throw new Error("the dev server reported no local URL");
     const normalizedBase = normalizeBase(base);
     const rootPosix = toPosix(dir);
@@ -759,7 +932,7 @@ async function runDevChecks(cell) {
           : failed(ssrProblems.join("; "));
     }
   } finally {
-    await closeServer(server, dir);
+    await server.close();
   }
 
   return checks;
@@ -876,6 +1049,45 @@ async function runBuildCheck(cell) {
         return failed(`TanStack Start build outputs contained no client js/html files`);
       }
       return passed(`clean ${outputs.join(", ")} build (${scanned} js/html files)`);
+    }
+
+    if (cell.build === "astro") {
+      // Astro builds through its own toolbar (Vite is an implementation detail),
+      // so use the documented `build()` JavaScript API and scan its output.
+      const astro = await loadAstro(dir);
+      // Keep the default outDir inside the fixture: Astro's prerender step
+      // imports bare packages from its output chunks, which only resolve
+      // through the fixture's own node_modules.
+      const outDir = path.join(dir, "dist");
+      fs.rmSync(outDir, { recursive: true, force: true });
+      await astro.build({ root: dir, logLevel: "error" });
+      const count = scanBuildOutput(outDir);
+      const relative = toPosix(path.relative(ROOT, outDir));
+      return passed(`clean ${relative} build (${count} js/html files)`);
+    }
+
+    if (cell.build === "vike") {
+      // Vike orchestrates separate client and SSR environments, so the
+      // production build must go through `build()` on `vike/api`.
+      const api = await import(
+        pathToFileURL(requireFrom(dir).resolve("vike/api")).href
+      );
+      const dist = path.join(dir, "dist");
+      fs.rmSync(dist, { recursive: true, force: true });
+      await api.build({ viteConfig: { root: dir, logLevel: "error" } });
+      const outputs = ["client", "server"]
+        .map((name) => path.join(dist, name))
+        .filter((output) => fs.existsSync(output));
+      if (outputs.length !== 2) {
+        return failed(
+          `vike build did not produce both dist/client and dist/server (found ${
+            outputs.map((output) => toPosix(path.relative(dir, output))).join(", ") || "nothing"
+          })`,
+        );
+      }
+      let scanned = 0;
+      for (const output of outputs) scanned += scanBuildOutput(output);
+      return passed(`clean dist/client + dist/server build (${scanned} js/html files)`);
     }
 
     return skipped(`unknown build mode ${cell.build}`);
@@ -1260,8 +1472,11 @@ function buildReport(cells, options) {
       rr7: "React Router v7",
       rr8: "React Router v8",
       tanstack: "TanStack Start",
+      astro: "Astro",
+      vike: "Vike",
       remix1: "Remix v1",
       remix2: "Remix v2",
+      nextjs: "Next.js",
     }[row.key];
     const react18 = byShortAndReact.get(`${short}|18`);
     const react19 = byShortAndReact.get(`${short}|19`);
@@ -1330,7 +1545,10 @@ function renderMarkdown(report) {
   lines.push("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |");
   for (const cell of report.cells) {
     if (cell.status !== "tested") {
-      const versions = cell.peer ? `peer ${cell.peer}` : "—";
+      // A peer range can contain `|` (e.g. `^18.2.0 || ^19.0.0`); escape it so
+      // the value stays inside its Markdown table cell.
+      const peer = cell.peer ? String(cell.peer).replace(/\|/g, "\\|") : null;
+      const versions = peer ? `peer ${peer}` : "—";
       lines.push(
         `| ${cell.reactMajor} | ${cell.framework} | ${versions} | ${cell.reason ?? ""} | — | — | — | — | — | — | — | ${cell.verdict} |`,
       );
@@ -1357,18 +1575,47 @@ function renderMarkdown(report) {
     "- **Remix v1 has no Vite integration** (`@remix-run/dev@1.19.1` uses its classic esbuild compiler), so this Vite plugin cannot run there.",
   );
   lines.push(
+    "- **Next.js is not applicable**: `next dev` uses Turbopack (default in Next.js 16) or webpack rather than Vite, and the SWC-based Next.js Compiler owns the JSX transform. Next.js 16.4.3 accepts React 18.2+ for the Pages Router and React 19 for the App Router, but this Vite plugin cannot install its transform or overlay runtime there.",
+  );
+  lines.push(
     "- **TanStack** is tested as TanStack Start (the Vite-based SSR framework); TanStack Router in SPA mode follows the same plain-Vite path as the Vite row.",
+  );
+  lines.push(
+    '- **Astro** is tested with Astro 7.4.2 + `@astrojs/react` 7.1.1 on React 18.3.1 and React 19.3.1. Astro owns the Vite config, so the plugin is installed through `vite.plugins` in `astro.config.mjs` and both the dev server and the production build go through Astro\'s documented JavaScript API (`dev()` / `build()`). The marker transform only applies to React/JSX modules; `.astro` markup itself is not instrumented, so the overlay is available on pages that hydrate a JSX island. `data-ttc-name` is a prop on component usage sites, so it only appears in SSR HTML when that component forwards props to a DOM node (the Astro fixture\'s `Button` does not; the served module still carries the marker).',
+  );
+  lines.push(
+    '- **Vike** is tested with Vike 0.4.268 + `vike-react` 0.6.31 on React 19.3.1. React 18 is unsupported upstream because `vike-react` declares `peer react ">=19"` / `peer react-dom ">=19"`. Dev and production builds use the documented `dev()` / `build()` functions from `vike/api`; the production scan covers both `dist/client` and `dist/server`, which contain none of the dev-only strings.',
+  );
+  lines.push(
+    '- **The headless-Chrome tier stays scoped to the counter-based playground fixtures**: the existing e2e runner asserts an app counter plus the three-row source action picker, which the static Astro/Vike compatibility fixtures do not implement (they configure `clickActions: ["open"]`). Their browser cell is therefore reported as skipped, not failed; every server-side, runtime and build check still runs for them.',
   );
   lines.push(
     '- "Works" means the pinned combination passed the version/isolation checks, dev-server marker + overlay injection checks, any applicable SSR-markup check, the real-React fiber/Alt+click check, and the production-build cleanliness check. The browser column is only filled when the run includes `--browser`.',
   );
   lines.push(
-    "- Vite 7 is covered separately by `pnpm test:matrix` (React 19 only); this table pins Vite 8 for the Vite/React Router/TanStack rows and Vite 6 for Remix v2, matching each framework's current supported range.",
+    "- Vite 7 is covered separately by `pnpm test:matrix` (React 19 only); this table pins Vite 8 for the Vite/React Router/TanStack/Astro/Vike rows and Vite 6 for Remix v2, matching each framework's current supported range.",
   );
   if (report.options?.browser) {
-    lines.push(
-      "- This run included the headless-Chrome tier: for every tested cell, Alt+click opened the expected `<Button>` usage site and the app's own click handler did not run.",
-    );
+    const testedCells = report.cells.filter((cell) => cell.status === "tested");
+    const browserPassed = testedCells.filter(
+      (cell) => cell.checks?.browser?.status === STATUS.pass,
+    ).length;
+    const browserSkipped = testedCells.filter(
+      (cell) => cell.checks?.browser?.status === STATUS.skip,
+    ).length;
+    if (browserPassed > 0) {
+      lines.push(
+        `- This run included the headless-Chrome tier: ${browserPassed} tested cell(s) passed the Alt+click check (the expected \`<Button>\` usage site opened and the app's own click handler did not run).`,
+      );
+    }
+    if (browserSkipped > 0) {
+      const firstSkip = testedCells.find(
+        (cell) => cell.checks?.browser?.status === STATUS.skip,
+      );
+      lines.push(
+        `- The Chrome tier was requested but skipped for ${browserSkipped} cell(s) in this environment (for example: ${firstSkip.checks.browser.detail}). A skipped browser check is reported as ⏭, never as a pass.`,
+      );
+    }
   }
   lines.push("");
   lines.push("## Reproduce");
@@ -1507,9 +1754,10 @@ async function main() {
     cell.checks.runtime = runtimeResults[cell.reactMajor] ?? skipped("runtime check did not run");
     if (cell.checks.browser === undefined) {
       cell.checks.browser = skipped(
-        options.browser
-          ? "browser tier runs after the server/build checks"
-          : "run pnpm test:compat:full for the Chrome tier",
+        cell.browserSkipReason ??
+          (options.browser
+            ? "browser tier runs after the server/build checks"
+            : "run pnpm test:compat:full for the Chrome tier"),
       );
     }
     cell.verdict = computeVerdict(cell);
@@ -1523,6 +1771,7 @@ async function main() {
     const browserTargets = cells.filter(
       (cell) =>
         !cell.status &&
+        !cell.browserSkipReason &&
         cell.checks?.devServer?.status !== STATUS.skip &&
         cell.checks?.browser?.status === STATUS.skip,
     );

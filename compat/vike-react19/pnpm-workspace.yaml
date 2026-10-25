@@ -1,0 +1,13 @@
+packages: []
+
+# Isolated install root: Vike + vike-react own their Vite plugin setup and must
+# not share a React/Vite copy with the other compatibility fixtures.
+storeDir: ../../.pnpm-store
+cacheDir: ../../.pnpm-cache
+stateDir: ../../.pnpm-state
+packageManagerStrict: false
+strictPeerDependencies: false
+autoInstallPeers: true
+nodeLinker: hoisted
+allowBuilds:
+  esbuild: false
