@@ -1,8 +1,15 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import {
+  buildWindowsCommandLine,
+  createWindowsSpawnPlan,
   editorNameOf,
   editorTargetExists,
+  escapeWindowsCommandArgument,
+  parseEditorFilePath,
   parseEditorTarget,
   presetEditorArgs,
   resolveEditorInvocation,
@@ -524,5 +531,140 @@ describe("editorTargetExists", () => {
         column: 1,
       }),
     ).toBe(false);
+  });
+});
+
+const temporaryDirectories: string[] = [];
+
+function makeTemporaryDirectory(prefix: string): string {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  temporaryDirectories.push(directory);
+  return directory;
+}
+
+afterAll(() => {
+  for (const directory of temporaryDirectories) {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+describe("windows command line escaping", () => {
+  it("escapes cmd.exe metacharacters in an argument and quotes the token", () => {
+    expect(
+      buildWindowsCommandLine({
+        command: "code",
+        args: ["-r", "-g", "D:/proj/src/a&b/App.tsx:1:1"],
+      }),
+    ).toBe('code -r -g ^"D:/proj/src/a^&b/App.tsx:1:1^"');
+  });
+
+  it("leaves ordinary tokens untouched and quotes spaces", () => {
+    expect(
+      buildWindowsCommandLine({
+        command: "code",
+        args: ["-r", "D:/My Project/App.tsx:1:1"],
+      }),
+    ).toBe('code -r "D:/My Project/App.tsx:1:1"');
+  });
+
+  it("rejects tokens cmd.exe would expand or split", () => {
+    expect(() => escapeWindowsCommandArgument("D:/proj/%TEMP%/App.tsx")).toThrow(
+      /%/,
+    );
+    expect(() => escapeWindowsCommandArgument("D:/proj/a\nb.tsx")).toThrow(
+      /line break/,
+    );
+    expect(() => escapeWindowsCommandArgument("D:/proj/a\rb.tsx")).toThrow(
+      /line break/,
+    );
+  });
+});
+
+describe("windows spawn plan", () => {
+  const command = { command: "fake-editor", args: ["-g", "D:/proj/a&b/App.tsx:1:1"] };
+
+  it("runs a .cmd shim through cmd.exe with an escaped command line", () => {
+    const binDirectory = makeTemporaryDirectory("ttc-editor-bin-");
+    const projectDirectory = makeTemporaryDirectory("ttc-editor-project-");
+    const shim = path.join(binDirectory, "fake-editor.CMD");
+    fs.writeFileSync(shim, "@echo off\r\n", "utf8");
+    const env: NodeJS.ProcessEnv = {
+      PATH: binDirectory,
+      PATHEXT: ".CMD;.EXE",
+      ComSpec: "C:/Windows/System32/cmd.exe",
+    };
+
+    const plan = createWindowsSpawnPlan(command, env, projectDirectory);
+
+    expect(plan.file).toBe("C:/Windows/System32/cmd.exe");
+    expect(plan.args.slice(0, 3)).toEqual(["/d", "/s", "/c"]);
+    expect(plan.windowsVerbatimArguments).toBe(true);
+    expect(plan.args[3]).toContain(path.resolve(shim));
+    expect(plan.args[3]).toContain("^&");
+    expect(plan.args[3]).toContain('^"');
+  });
+
+  it("spawns an .exe directly without a shell", () => {
+    const binDirectory = makeTemporaryDirectory("ttc-editor-bin-");
+    const projectDirectory = makeTemporaryDirectory("ttc-editor-project-");
+    const executable = path.join(binDirectory, "fake-editor.EXE");
+    fs.writeFileSync(executable, "fake", "utf8");
+    const env: NodeJS.ProcessEnv = { PATH: binDirectory, PATHEXT: ".CMD;.EXE" };
+
+    const plan = createWindowsSpawnPlan(command, env, projectDirectory);
+
+    expect(plan.file).toBe(executable);
+    expect(plan.args).toEqual(command.args);
+    expect(plan.windowsVerbatimArguments).toBe(false);
+  });
+
+  it("does not resolve an executable planted in the project directory", () => {
+    const projectDirectory = makeTemporaryDirectory("ttc-editor-planted-");
+    fs.writeFileSync(
+      path.join(projectDirectory, "code.CMD"),
+      "@echo off\r\n",
+      "utf8",
+    );
+    const env: NodeJS.ProcessEnv = { PATH: projectDirectory, PATHEXT: ".CMD" };
+
+    expect(() =>
+      createWindowsSpawnPlan(
+        { command: "code", args: [] },
+        env,
+        projectDirectory,
+      ),
+    ).toThrow(/on PATH/);
+  });
+
+  it("reports a command that is not on PATH", () => {
+    const emptyDirectory = makeTemporaryDirectory("ttc-editor-empty-");
+    const env: NodeJS.ProcessEnv = { PATH: emptyDirectory, PATHEXT: ".CMD" };
+
+    expect(() =>
+      createWindowsSpawnPlan(
+        { command: "definitely-not-an-editor", args: [] },
+        env,
+        makeTemporaryDirectory("ttc-editor-project-"),
+      ),
+    ).toThrow(/on PATH/);
+  });
+});
+
+describe("parseEditorFilePath", () => {
+  const root = "D:/Github/app";
+
+  it("accepts a bare in-root path and strips an optional position suffix", () => {
+    expect(parseEditorFilePath("app/routes/home.tsx", root)).toBe(
+      "D:/Github/app/app/routes/home.tsx",
+    );
+    expect(parseEditorFilePath("app/routes/home.tsx:3:4", root)).toBe(
+      "D:/Github/app/app/routes/home.tsx",
+    );
+  });
+
+  it("rejects paths outside the project root", () => {
+    expect(parseEditorFilePath("../outside.tsx", root)).toBeUndefined();
+    expect(parseEditorFilePath("D:/outside/file.tsx", root)).toBeUndefined();
+    expect(parseEditorFilePath("", root)).toBeUndefined();
   });
 });

@@ -105,6 +105,7 @@ async function invoke(
   handler: AnyFn,
   url: string,
   method = "GET",
+  headers: Record<string, string> = {},
 ): Promise<CallResult> {
   const result: CallResult = { status: 0, body: "", next: false };
   let finish: () => void = () => {};
@@ -132,7 +133,7 @@ async function invoke(
 
   handler.call(
     {},
-    { method, url, headers: {} },
+    { method, url, headers },
     response,
     () => {
       result.next = true;
@@ -188,10 +189,10 @@ describe("dev server banner", () => {
     expect(String(logger.info.mock.calls[1]?.[0])).not.toContain("(default)");
   });
 
-  it("describes editor: 'auto' as Vite detection and registers no endpoint", () => {
+  it("describes editor: 'auto' as Vite detection and registers only a containment check", () => {
     const { logger, use } = configureForLog({ editor: "auto" });
 
-    expect(use).not.toHaveBeenCalled();
+    expect(use).toHaveBeenCalledTimes(1);
     expect(String(logger.info.mock.calls[1]?.[0])).toContain(
       "editor: auto (Vite / launch-editor detection)",
     );
@@ -415,5 +416,156 @@ describe("custom editor endpoint", () => {
 
     expect(result.status).toBe(200);
     expect(resolvedLauncher).toBe(true);
+  });
+});
+
+describe("request origin checks", () => {
+  it("rejects a cross-origin GET before launching anything", async () => {
+    const { handler, targets } = createHarness();
+
+    const result = await invoke(handler, editorUrl(SOURCE_MARKER), "GET", {
+      origin: "https://evil.example",
+    });
+
+    expect(result.status).toBe(403);
+    expect(result.body).toContain("cross-origin");
+    expect(targets).toHaveLength(0);
+  });
+
+  it("rejects cross-site fetch metadata", async () => {
+    const { handler, targets } = createHarness();
+
+    for (const site of ["cross-site", "same-site"]) {
+      const result = await invoke(handler, editorUrl(SOURCE_MARKER), "GET", {
+        "sec-fetch-site": site,
+      });
+      expect(result.status, site).toBe(403);
+    }
+    expect(targets).toHaveLength(0);
+  });
+
+  it("rejects a cross-origin POST", async () => {
+    const { handler, targets } = createHarness();
+
+    const result = await invoke(handler, editorUrl(SOURCE_MARKER), "POST", {
+      origin: "https://evil.example",
+      "sec-fetch-site": "cross-site",
+    });
+
+    expect(result.status).toBe(403);
+    expect(targets).toHaveLength(0);
+  });
+
+  it("allows same-origin requests", async () => {
+    const { handler, targets } = createHarness();
+
+    const result = await invoke(handler, editorUrl(SOURCE_MARKER), "GET", {
+      origin: "http://localhost:5173",
+      host: "localhost:5173",
+      "sec-fetch-site": "same-origin",
+    });
+
+    expect(result.status).toBe(200);
+    expect(targets).toHaveLength(1);
+  });
+
+  it("allows requests without browser origin headers", async () => {
+    const { handler, targets } = createHarness();
+
+    const result = await invoke(handler, editorUrl(SOURCE_MARKER), "GET", {
+      "user-agent": "curl/8",
+    });
+
+    expect(result.status).toBe(200);
+    expect(targets).toHaveLength(1);
+  });
+
+  it("allows a same-origin request on a non-default port", async () => {
+    const { handler, targets } = createHarness({}, { base: "/" });
+
+    const result = await invoke(handler, editorUrl(SOURCE_MARKER), "GET", {
+      origin: "http://localhost:4321",
+      host: "localhost:4321",
+      "sec-fetch-site": "same-origin",
+    });
+
+    expect(result.status).toBe(200);
+    expect(targets).toHaveLength(1);
+  });
+});
+
+describe("launch throttling", () => {
+  it("coalesces rapid duplicate requests for the same file", async () => {
+    const { handler, targets } = createHarness();
+
+    const first = await invoke(handler, editorUrl(SOURCE_MARKER));
+    const second = await invoke(handler, editorUrl(SOURCE_MARKER));
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(targets).toHaveLength(1);
+  });
+
+  it("still launches the editor for a different file", async () => {
+    const { handler, targets } = createHarness();
+
+    await invoke(handler, editorUrl(SOURCE_MARKER));
+    const other = await invoke(handler, editorUrl("src/editor.ts:1:1"));
+
+    expect(other.status).toBe(200);
+    expect(targets).toHaveLength(2);
+  });
+});
+
+describe("editor: 'auto' containment", () => {
+  it("forwards an in-root file to Vite's endpoint", async () => {
+    const { handler } = createHarness({ editor: "auto" });
+
+    const result = await invoke(
+      handler,
+      editorUrl(SOURCE_MARKER, "/__open-in-editor"),
+    );
+
+    expect(result.next).toBe(true);
+    expect(result.status).toBe(200);
+  });
+
+  it("rejects files outside the project root", async () => {
+    const { handler } = createHarness({ editor: "auto" });
+
+    const result = await invoke(
+      handler,
+      editorUrl("D:/outside/file.tsx:1:1", "/__open-in-editor"),
+    );
+
+    expect(result.status).toBe(400);
+    expect(result.body).toContain("outside the project root");
+    expect(result.next).toBe(false);
+  });
+
+  it("rejects traversal that escapes the project root", async () => {
+    const { handler } = createHarness({ editor: "auto" });
+
+    const result = await invoke(
+      handler,
+      editorUrl("../../outside.tsx:1:1", "/__open-in-editor"),
+    );
+
+    expect(result.status).toBe(400);
+    expect(result.next).toBe(false);
+  });
+
+  it("rejects cross-origin requests to Vite's endpoint", async () => {
+    const { handler } = createHarness({ editor: "auto" });
+
+    const result = await invoke(
+      handler,
+      editorUrl(SOURCE_MARKER, "/__open-in-editor"),
+      "GET",
+      { origin: "https://evil.example" },
+    );
+
+    expect(result.status).toBe(403);
+    expect(result.next).toBe(false);
   });
 });

@@ -5,6 +5,7 @@ import {
   formatEntryLabel,
   formatMarker,
   formatNameLabel,
+  isSafeSourceFile,
   parseMarker,
   resolveFullPath,
 } from "../../src/client/index";
@@ -56,6 +57,31 @@ describe("parseMarker", () => {
   it("rejects missing values without throwing", () => {
     expect(parseMarker(null)).toBeNull();
     expect(parseMarker(undefined)).toBeNull();
+  });
+});
+
+describe("isSafeSourceFile", () => {
+  it("accepts project-relative paths", () => {
+    expect(isSafeSourceFile("app/routes/home.tsx")).toBe(true);
+    expect(isSafeSourceFile("app/components/MyBox.tsx")).toBe(true);
+    expect(isSafeSourceFile("src\\windows\\style.tsx")).toBe(true);
+    expect(isSafeSourceFile("file.tsx")).toBe(true);
+  });
+
+  it("rejects paths that escape or name an absolute location", () => {
+    for (const file of [
+      "../outside.tsx",
+      "app/../../outside.tsx",
+      "app/../outside.tsx",
+      "/etc/passwd",
+      "\\\\server\\share\\file.tsx",
+      "//server/share/file.tsx",
+      "D:/outside/file.tsx",
+      "C:\\outside\\file.tsx",
+      "",
+    ]) {
+      expect(isSafeSourceFile(file), file).toBe(false);
+    }
   });
 });
 

@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { normalizePath, relativeToRoot, resolveFromRoot } from "./paths.js";
 import type {
@@ -204,26 +205,167 @@ export function resolveEditorInvocation(
     : resolveObjectEditor(editor, target);
 }
 
-/** Single-quote/escape a token for a `cmd.exe /c` command line. */
+/**
+ * Characters `cmd.exe` interprets as syntax. They must be caret-escaped in
+ * every token of a command line that runs through the shell.
+ */
+const CMD_METACHARACTER_RE = /[&|<>,;=^]/g;
+const DEFAULT_WINDOWS_EXTENSIONS = [".COM", ".EXE", ".BAT", ".CMD"];
+
+function windowsExecutableExtensions(env: NodeJS.ProcessEnv): string[] {
+  const configured = (env.PATHEXT ?? "")
+    .split(";")
+    .map((extension) => extension.trim())
+    .filter(Boolean);
+  return configured.length > 0 ? configured : DEFAULT_WINDOWS_EXTENSIONS;
+}
+
+function isInsideDirectory(candidate: string, directory: string): boolean {
+  const normalizedCandidate = candidate.replace(/\\/g, "/").toLowerCase();
+  const normalizedDirectory = directory.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+  if (normalizedDirectory === "") return false;
+  return normalizedCandidate.startsWith(`${normalizedDirectory}/`);
+}
+
+/**
+ * Resolve the editor executable to an absolute path without consulting the
+ * current directory. `cmd.exe` resolves a bare command against the cwd first,
+ * so a repository (or a dependency) could otherwise plant `code.cmd` and have
+ * it executed by the editor click.
+ */
+export function resolveWindowsExecutable(
+  command: string,
+  env: NodeJS.ProcessEnv = process.env,
+  cwd: string = process.cwd(),
+): string {
+  const trimmed = command.trim();
+  if (trimmed === "") {
+    throw new Error("the editor command must not be empty");
+  }
+
+  if (/[\\/]/.test(trimmed) || /^[A-Za-z]:/.test(trimmed)) {
+    const resolved = path.resolve(cwd, trimmed);
+    if (!fs.existsSync(resolved)) {
+      throw new Error(`could not find the editor at "${resolved}"`);
+    }
+    return resolved;
+  }
+
+  const extensions = windowsExecutableExtensions(env);
+  const lowered = trimmed.toLowerCase();
+  const hasExtension = extensions.some((extension) =>
+    lowered.endsWith(extension.toLowerCase()),
+  );
+  const directories = (env.PATH ?? "")
+    .split(path.delimiter)
+    .map((directory) => directory.trim())
+    .filter(Boolean);
+
+  for (const directory of directories) {
+    for (const extension of hasExtension ? [""] : extensions) {
+      const candidate = path.resolve(directory, `${trimmed}${extension}`);
+      // Refuse to launch an executable that lives inside the project tree:
+      // that is exactly the binary-planting shape this lookup exists to stop.
+      if (isInsideDirectory(candidate, cwd)) continue;
+      try {
+        if (fs.statSync(candidate).isFile()) return candidate;
+      } catch {
+        // Keep looking: a missing candidate is not an error.
+      }
+    }
+  }
+
+  throw new Error(
+    `could not find "${trimmed}" on PATH (an editor installed outside PATH needs an absolute command)`,
+  );
+}
+
+/**
+ * Escape one token the way `cmd.exe` expects. Mirrors the `launch-editor`
+ * implementation bundled with Vite: reject CR/LF and `%` (cmd expands
+ * environment variables before `^` can protect them), caret-escape the
+ * metacharacters, then quote.
+ */
+export function escapeWindowsCommandArgument(argument: string): string {
+  if (/[\r\n]/.test(argument)) {
+    throw new Error("the editor command contains a line break");
+  }
+  if (argument.includes("%")) {
+    throw new Error('the editor command contains a "%" that cmd.exe would expand');
+  }
+  return argument.replace(CMD_METACHARACTER_RE, "^$&");
+}
+
+/** Quote a token for `cmd.exe /d /s /c` after escaping it. */
 function quoteWindowsArgument(argument: string): string {
-  if (argument !== "" && !/[\s"]/.test(argument)) return argument;
-  return `"${argument.replace(/"/g, '\\"')}"`;
+  const escaped = escapeWindowsCommandArgument(argument);
+  if (escaped.includes("^")) return `^"${escaped}^"`;
+  if (escaped.includes(" ")) return `"${escaped}"`;
+  return escaped;
+}
+
+/** Build the single command line that `cmd.exe /d /s /c` will execute. */
+export function buildWindowsCommandLine(command: EditorCommand): string {
+  return [command.command, ...command.args]
+    .map(quoteWindowsArgument)
+    .join(" ");
+}
+
+export interface WindowsSpawnPlan {
+  /** Executable to hand to `spawn` (cmd.exe for `.cmd`/`.bat` shims). */
+  file: string;
+  args: string[];
+  /** Only the `cmd.exe` plan needs verbatim argument passing. */
+  windowsVerbatimArguments: boolean;
+}
+
+/**
+ * Decide how to launch an editor on Windows. `.exe`/`.com` binaries are
+ * spawned directly (no shell); `.cmd`/`.bat` shims are the only case that
+ * needs `cmd.exe`, and then with a fully escaped command line.
+ */
+export function createWindowsSpawnPlan(
+  command: EditorCommand,
+  env: NodeJS.ProcessEnv = process.env,
+  cwd: string = process.cwd(),
+): WindowsSpawnPlan {
+  const executable = resolveWindowsExecutable(command.command, env, cwd);
+  const lowered = executable.toLowerCase();
+  if (lowered.endsWith(".cmd") || lowered.endsWith(".bat")) {
+    const commandLine = buildWindowsCommandLine({
+      command: executable,
+      args: command.args,
+    });
+    return {
+      file: env.ComSpec ?? env.COMSPEC ?? "cmd.exe",
+      args: ["/d", "/s", "/c", `"${commandLine}"`],
+      windowsVerbatimArguments: true,
+    };
+  }
+  return {
+    file: executable,
+    args: [...command.args],
+    windowsVerbatimArguments: false,
+  };
 }
 
 function spawnDetached(
   command: EditorCommand,
   onError?: (message: string) => void,
 ): void {
-  const { command: file, args } = command;
+  const { command: file } = command;
   try {
     if (process.platform === "win32") {
       // Editor CLIs on Windows are usually `.cmd` shims (`code.cmd`,
-      // `cursor.cmd`, …), which CreateProcess cannot run directly.
-      const commandLine = [file, ...args].map(quoteWindowsArgument).join(" ");
-      const child = spawn(commandLine, {
-        shell: true,
+      // `cursor.cmd`, …), which CreateProcess cannot run directly. Resolve the
+      // executable ourselves and escape every token: `shell: true` with a
+      // concatenated command line let `cmd.exe` interpret metacharacters in
+      // the file path (a project or dependency filename) as syntax.
+      const plan = createWindowsSpawnPlan(command);
+      const child = spawn(plan.file, plan.args, {
         stdio: "ignore",
         windowsHide: true,
+        windowsVerbatimArguments: plan.windowsVerbatimArguments,
       });
       child.on("error", (error) => {
         onError?.(`Could not launch "${file}": ${error.message}`);
@@ -231,7 +373,10 @@ function spawnDetached(
       child.unref();
       return;
     }
-    const child = spawn(file, args, { stdio: "ignore", detached: true });
+    const child = spawn(file, command.args, {
+      stdio: "ignore",
+      detached: true,
+    });
     child.on("error", (error) => {
       onError?.(`Could not launch "${file}": ${error.message}`);
     });
@@ -242,6 +387,7 @@ function spawnDetached(
     );
   }
 }
+
 
 /**
  * Turn the `editor` option into a launcher the dev server can call.
@@ -281,6 +427,49 @@ export function createEditorLauncher(
 const POSITION_SUFFIX_RE = /:(\d+)(?::(\d+))?$/;
 
 /**
+ * Normalise and contain one file part (no position suffix) inside `root`.
+ * Returns `undefined` for anything that resolves outside the project root.
+ */
+function resolveContainedFile(rawFile: string, root: string): string | undefined {
+  let filePart = rawFile;
+  if (filePart.startsWith("file://")) {
+    try {
+      filePart = fileURLToPath(filePart);
+    } catch {
+      return undefined;
+    }
+  }
+
+  // Normalise separators and resolve without relying on the host platform:
+  // `fileURLToPath` yields `/D:/…` on POSIX for a Windows file URL, and a
+  // project root may be a Windows path even when the tests run on Linux.
+  filePart = normalizePath(filePart);
+  if (/^\/[A-Za-z]:\//.test(filePart)) filePart = filePart.slice(1);
+
+  const resolved = resolveFromRoot(root, filePart);
+  if (!relativeToRoot(root, resolved)) return undefined;
+  return resolved;
+}
+
+/**
+ * Resolve the file part of an open-in-editor request without requiring a
+ * position suffix, so a request can be containment-checked before it is
+ * delegated to Vite's built-in `/__open-in-editor` endpoint (`editor: "auto"`).
+ */
+export function parseEditorFilePath(
+  raw: string,
+  root: string,
+): string | undefined {
+  const value = raw.trim();
+  if (value === "") return undefined;
+  let filePart = value;
+  const position = POSITION_SUFFIX_RE.exec(filePart);
+  if (position) filePart = filePart.slice(0, position.index);
+  if (filePart === "") return undefined;
+  return resolveContainedFile(filePart, root);
+}
+
+/**
  * Parse `"<absolute-or-root-relative path>:<line>:<column>"` and make sure the
  * file is inside the project root (`root`), so the endpoint cannot be used to
  * open arbitrary files on the dev-server machine.
@@ -306,22 +495,8 @@ export function parseEditorTarget(
   if (!Number.isFinite(line) || line < 1) return undefined;
   if (!Number.isFinite(column) || column < 1) return undefined;
 
-  if (filePart.startsWith("file://")) {
-    try {
-      filePart = fileURLToPath(filePart);
-    } catch {
-      return undefined;
-    }
-  }
-
-  // Normalise separators and resolve without relying on the host platform:
-  // `fileURLToPath` yields `/D:/…` on POSIX for a Windows file URL, and a
-  // project root may be a Windows path even when the tests run on Linux.
-  filePart = normalizePath(filePart);
-  if (/^\/[A-Za-z]:\//.test(filePart)) filePart = filePart.slice(1);
-
-  const resolved = resolveFromRoot(root, filePart);
-  if (!relativeToRoot(root, resolved)) return undefined;
+  const resolved = resolveContainedFile(filePart, root);
+  if (!resolved) return undefined;
   return { file: resolved, line, column };
 }
 

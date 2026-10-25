@@ -129,4 +129,55 @@ describe("openInEditor", () => {
     await expect(openInEditor(makeConfig(), MARKER, { onError })).resolves.toBe(false);
     expect(onError).toHaveBeenCalledTimes(1);
   });
+
+  it("refuses traversal and absolute markers without calling fetch", async () => {
+    const fetchImpl = vi.fn(async () => ({ ok: true, status: 200 }));
+    const onError = vi.fn();
+
+    for (const file of [
+      "../outside.tsx",
+      "app/../../outside.tsx",
+      "/etc/passwd",
+      "D:/outside/file.tsx",
+      "C:\\outside\\file.tsx",
+    ]) {
+      await expect(
+        openInEditor(
+          makeConfig(),
+          { file, line: 1, column: 1 },
+          { fetchImpl, onError },
+        ),
+        file,
+      ).resolves.toBe(false);
+    }
+
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledTimes(5);
+    expect(String(onError.mock.calls[0]?.[0] ?? "")).toContain(
+      "invalid source location",
+    );
+  });
+
+  it("refuses markers with an invalid line or column", async () => {
+    const fetchImpl = vi.fn(async () => ({ ok: true, status: 200 }));
+    const onError = vi.fn();
+
+    await expect(
+      openInEditor(
+        makeConfig(),
+        { file: "app/routes/home.tsx", line: 0, column: 7 },
+        { fetchImpl, onError },
+      ),
+    ).resolves.toBe(false);
+    await expect(
+      openInEditor(
+        makeConfig(),
+        { file: "app/routes/home.tsx", line: 1.5, column: 7 },
+        { fetchImpl, onError },
+      ),
+    ).resolves.toBe(false);
+
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledTimes(2);
+  });
 });

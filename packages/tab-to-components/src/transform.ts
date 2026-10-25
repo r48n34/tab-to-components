@@ -111,8 +111,13 @@ interface AstObjectExpression extends AstNode {
   properties: AstObjectProperty[];
 }
 
+interface AstCallee extends AstNode {
+  name?: string;
+}
+
 interface AstCallExpression extends AstNode {
   type: "CallExpression";
+  callee?: AstCallee;
   arguments: AstNode[];
 }
 
@@ -359,6 +364,27 @@ function isComponentName(name: string): boolean {
 }
 
 /**
+ * Callees produced by a development JSX transform. The compiled-JSX fallback
+ * must only rewrite these: matching any 5-argument call with a source-like
+ * object would corrupt unrelated app code (analytics calls, prototypes, …).
+ * Babel and esbuild emit `jsxDEV`/`jsxs`/`jsx`; a Babel import may be aliased
+ * to `_jsxDEV` and friends.
+ */
+const COMPILED_JSX_CALLEES = new Set([
+  "jsxDEV",
+  "jsx",
+  "jsxs",
+  "_jsxDEV",
+  "_jsx",
+  "_jsxs",
+]);
+
+function compiledCalleeName(callee: AstCallee | undefined): string | undefined {
+  if (!callee || callee.type !== "Identifier") return undefined;
+  return callee.name;
+}
+
+/**
  * Inject the same source markers into already-compiled `jsxDEV(...)` calls.
  *
  * Babel's and esbuild's development JSX transforms emit
@@ -376,6 +402,9 @@ function injectCompiledJsxMarkers(
   walk(ast, (node) => {
     if (node.type !== "CallExpression") return;
     const call = node as AstCallExpression;
+    if (!COMPILED_JSX_CALLEES.has(compiledCalleeName(call.callee) ?? "")) {
+      return;
+    }
     const args = call.arguments;
     if (args.length < 5) return;
 

@@ -11,6 +11,7 @@ import {
   CUSTOM_EDITOR_ENDPOINT,
   createEditorLauncher,
   editorTargetExists,
+  parseEditorFilePath,
   parseEditorTarget,
 } from "./editor.js";
 import { VERSION } from "./version.js";
@@ -129,6 +130,85 @@ type PluginContextWithEnvironment = {
  * esbuild do in development.
  */
 const COMPILED_JSX_RE = /\b(?:jsxDEV|jsxs?|createElement)\s*\(/;
+
+type RequestHeaders = Record<string, string | string[] | undefined>;
+
+function headerValue(
+  headers: RequestHeaders,
+  name: string,
+): string | undefined {
+  const value = headers[name];
+  return typeof value === "string" ? value : undefined;
+}
+
+/**
+ * Reject a request that a browser reports as coming from another origin.
+ * The endpoint launches a process, so a hostile page must not be able to
+ * trigger it with an `<img>`, a form, or a `no-cors` fetch. Requests without
+ * either header (CLI tools, older browsers, tests) are allowed: they cannot
+ * be distinguished, and the remaining local-only guard is the endpoint URL.
+ */
+function crossOriginRejection(
+  headers: RequestHeaders,
+  configuredOrigin: string | undefined,
+): string | undefined {
+  const secFetchSite = headerValue(headers, "sec-fetch-site");
+  if (
+    secFetchSite !== undefined &&
+    secFetchSite !== "same-origin" &&
+    secFetchSite !== "none"
+  ) {
+    return "cross-origin request rejected";
+  }
+
+  const origin = headerValue(headers, "origin");
+  if (origin === undefined || origin === "") return undefined;
+
+  let parsedOrigin: URL;
+  try {
+    parsedOrigin = new URL(origin);
+  } catch {
+    return "invalid Origin header";
+  }
+  if (parsedOrigin.protocol !== "http:" && parsedOrigin.protocol !== "https:") {
+    return "unsupported request origin";
+  }
+
+  const host = headerValue(headers, "host");
+  if (host !== undefined && parsedOrigin.host === host) return undefined;
+  if (configuredOrigin !== undefined) {
+    try {
+      if (parsedOrigin.origin === new URL(configuredOrigin).origin) {
+        return undefined;
+      }
+    } catch {
+      // Ignore an invalid configured origin and fall through to the rejection.
+    }
+  }
+  return "cross-origin request rejected";
+}
+
+/**
+ * Match an editor endpoint URL (with or without the Vite `base` prefix) and
+ * return its query parameters, or `undefined` when the request is unrelated.
+ */
+function matchEditorEndpoint(
+  rawUrl: string,
+  endpoint: string,
+  basePrefix: string,
+): URLSearchParams | undefined {
+  if (!rawUrl.startsWith("/")) return undefined;
+  const queryIndex = rawUrl.indexOf("?");
+  const rawPath = queryIndex === -1 ? rawUrl : rawUrl.slice(0, queryIndex);
+  const search = queryIndex === -1 ? "" : rawUrl.slice(queryIndex + 1);
+  let pathname = rawPath;
+  if (basePrefix && pathname.startsWith(basePrefix)) {
+    pathname = pathname.slice(basePrefix.length);
+  }
+  if (pathname !== endpoint) return undefined;
+  return new URLSearchParams(search);
+}
+
 
 /**
  * Alt+click to open components.
@@ -331,38 +411,133 @@ export function tabToComponents(
           );
         }
       }
-      if (!editorLauncher) return;
+      const configuredHost = server.config.server?.host;
+      const exposedBeyondLoopback =
+        configuredHost === true ||
+        (typeof configuredHost === "string" &&
+          configuredHost !== "" &&
+          configuredHost !== "localhost" &&
+          configuredHost !== "127.0.0.1" &&
+          configuredHost !== "::1");
+      if (exposedBeyondLoopback) {
+        server.config.logger.warn(
+          "\n  tab-to-components: the dev server is exposed beyond localhost; " +
+            "the editor endpoint can be called by other devices on the network. " +
+            "Bind the dev server to localhost when you do not need network access.",
+        );
+      }
 
-      // A custom editor needs our own endpoint: Vite's built-in one always
-      // goes through launch-editor's auto-detection / LAUNCH_EDITOR.
+      // A custom editor needs our own endpoint; `editor: "auto"` still asks
+      // Vite's built-in endpoint, but both paths are validated here first. For
+      // `auto` the middleware only validates and calls `next()`, so Vite's
+      // launch-editor keeps doing the actual launch.
       const requestEndpoint = `/${editorEndpoint}`;
       const basePrefix = base === "/" ? "" : base.replace(/\/+$/, "");
+      const autoEditor = editorLauncher === undefined;
+      const configuredOrigin =
+        typeof server.config.server?.origin === "string"
+          ? server.config.server.origin
+          : undefined;
+
+      // A browser request is one request, but nothing stops a page from
+      // emitting hundreds at once. Coalesce concurrent/rapid duplicates and
+      // cap the overall rate so a drive-by page cannot spawn an editor storm.
+      const inFlightTargets = new Set<string>();
+      const lastLaunchAt = new Map<string, number>();
+      const recentLaunches: number[] = [];
+      const MIN_LAUNCH_INTERVAL_MS = 250;
+      const LAUNCH_WINDOW_MS = 5_000;
+      const MAX_LAUNCHES_PER_WINDOW = 20;
+
+      function reserveLaunch(file: string): "launch" | "duplicate" | "limited" {
+        const now = Date.now();
+        if (inFlightTargets.has(file)) return "duplicate";
+        const last = lastLaunchAt.get(file);
+        if (last !== undefined && now - last < MIN_LAUNCH_INTERVAL_MS) {
+          return "duplicate";
+        }
+
+        while (recentLaunches.length > 0) {
+          const oldest = recentLaunches[0];
+          if (oldest === undefined || now - oldest <= LAUNCH_WINDOW_MS) break;
+          recentLaunches.shift();
+        }
+        if (recentLaunches.length >= MAX_LAUNCHES_PER_WINDOW) return "limited";
+
+        inFlightTargets.add(file);
+        lastLaunchAt.set(file, now);
+        recentLaunches.push(now);
+        if (lastLaunchAt.size > 512) {
+          for (const [key, launchedAt] of lastLaunchAt) {
+            if (now - launchedAt > LAUNCH_WINDOW_MS) lastLaunchAt.delete(key);
+          }
+        }
+        return "launch";
+      }
 
       server.middlewares.use((request, response, next) => {
-        const rawUrl = request.url ?? "";
-        if (!rawUrl.startsWith("/")) return next();
-        const queryIndex = rawUrl.indexOf("?");
-        const rawPath = queryIndex === -1 ? rawUrl : rawUrl.slice(0, queryIndex);
-        const search = queryIndex === -1 ? "" : rawUrl.slice(queryIndex + 1);
-        let pathname = rawPath;
-        if (basePrefix && pathname.startsWith(basePrefix)) {
-          pathname = pathname.slice(basePrefix.length);
-        }
-        if (pathname !== requestEndpoint) return next();
+        const searchParams = matchEditorEndpoint(
+          request.url ?? "",
+          requestEndpoint,
+          basePrefix,
+        );
+        if (!searchParams) return next();
 
         if (request.method !== "GET" && request.method !== "POST") {
+          // In auto mode the request belongs to Vite; leave its handling alone.
+          if (autoEditor) return next();
           response.statusCode = 405;
           response.end("tab-to-components: method not allowed");
           return;
         }
 
-        const rawFile = new URLSearchParams(search).get("file");
+        const rejection = crossOriginRejection(
+          request.headers,
+          configuredOrigin,
+        );
+        if (rejection !== undefined) {
+          response.statusCode = 403;
+          response.end(`tab-to-components: ${rejection}`);
+          return;
+        }
+
+        const rawFile = searchParams.get("file");
+
+        if (autoEditor) {
+          // Vite's launch-editor resolves the path with `path.resolve` and only
+          // checks existence, so validate containment before delegating. A
+          // legitimate request may omit the line/column suffix.
+          const file = rawFile ? parseEditorFilePath(rawFile, root) : undefined;
+          if (file === undefined || !editorTargetExists({ file, line: 1, column: 1 })) {
+            response.statusCode = 400;
+            response.end(
+              "tab-to-components: refused to open a file outside the project root",
+            );
+            return;
+          }
+          return next();
+        }
+
         const target = rawFile ? parseEditorTarget(rawFile, root) : undefined;
         if (!target || !editorTargetExists(target)) {
           response.statusCode = 400;
           response.end(
             "tab-to-components: missing or invalid `file` parameter (expected an absolute path inside the project root)",
           );
+          return;
+        }
+
+        const reservation = reserveLaunch(target.file);
+        if (reservation === "limited") {
+          response.statusCode = 429;
+          response.end(
+            "tab-to-components: too many editor launches, try again shortly",
+          );
+          return;
+        }
+        if (reservation === "duplicate") {
+          response.statusCode = 200;
+          response.end();
           return;
         }
 
@@ -383,6 +558,9 @@ export function tabToComponents(
                 }`,
               );
             }
+          })
+          .finally(() => {
+            inFlightTargets.delete(target.file);
           });
       });
     },

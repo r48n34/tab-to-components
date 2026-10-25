@@ -43,6 +43,7 @@ export {
   formatEntryLabel,
   formatMarker,
   formatNameLabel,
+  isSafeSourceFile,
   parseMarker,
   resolveFullPath,
 } from "./marker";

@@ -251,7 +251,12 @@ tabToComponents({
 // Or run any code in the dev server process (remote editors, custom protocols, …)
 tabToComponents({
   editor: async ({ file, line, column }) => {
-    await fetch(`http://localhost:7777/open?file=${file}&line=${line}&column=${column}`);
+    const url = new URL("http://localhost:7777/open");
+    // `file` is an absolute path and may contain URL metacharacters.
+    url.searchParams.set("file", file);
+    url.searchParams.set("line", String(line));
+    url.searchParams.set("column", String(column));
+    await fetch(url);
   },
 });
 ```
@@ -270,6 +275,8 @@ LAUNCH_EDITOR=cursor    pnpm dev
 LAUNCH_EDITOR=webstorm  pnpm dev
 ```
 
+> **Windows security note.** `editor: "auto"` delegates to Vite's `/__open-in-editor` endpoint, which comes from Vite/`launch-editor` and exists on every Vite dev server. Keep Vite patched: [GHSA-587h-7wmj-h5pm](https://github.com/advisories/GHSA-587h-7wmj-h5pm) affects Vite 6 ≤ 6.4.3, 7.0–7.3.6, 8.0–8.1.5, 8.2.0–8.2.3 and 8.3.0–8.3.2 (fixed in 6.4.4 / 7.3.7 / 8.1.6 / 8.2.4 / 8.3.3), and [GHSA-v6wh-96g9-6wx3](https://github.com/advisories/GHSA-v6wh-96g9-6wx3) affects Vite 6 ≤ 6.4.2, 7.0–7.3.4 and 8.0.0–8.0.15 (fixed in 6.4.3 / 7.3.5 / 8.0.16). The default `editor: "code"` path uses the plugin's own endpoint and is not affected by those advisories.
+
 What the presets launch:
 
 | Editor family | Presets | Arguments |
@@ -283,7 +290,7 @@ What the presets launch:
 
 Anything not in the table is treated as a command name and launched with `<file>:<line>:<column>` appended (works for most VS Code forks). Use a command template or the object form when your IDE needs different flags.
 
-The endpoint only accepts files inside the Vite project root, and the command runs on the **dev-server machine** — exactly like `launch-editor`. If your dev server runs in a container, WSL or over SSH, use the function form (e.g. POST to a helper on your machine) or `editor: "auto"` with `LAUNCH_EDITOR` pointing at a wrapper script.
+The plugin's endpoints only accept files inside the Vite project root — requests handed to Vite's endpoint in `editor: "auto"` mode are validated by the plugin before Vite sees them — and the command runs on the **dev-server machine**, exactly like `launch-editor`. If your dev server runs in a container, WSL or over SSH, use the function form (e.g. POST to a helper on your machine) or `editor: "auto"` with `LAUNCH_EDITOR` pointing at a wrapper script.
 
 If the editor cannot be launched, the terminal receives the error and a toast in the browser shows the full `path:line:column` so you can copy it.
 

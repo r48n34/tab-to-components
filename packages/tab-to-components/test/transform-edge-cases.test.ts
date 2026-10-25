@@ -267,3 +267,50 @@ describe("marker placement in unusual elements", () => {
     expect(run("   \n\t\n")).toBeUndefined();
   });
 });
+
+describe("compiled-JSX fallback calibration", () => {
+  it("does not rewrite an unrelated five-argument call with a source-like object", () => {
+    const code = [
+      "const a = 1 < 2;",
+      "trackEvent(event, null, user, amount, {",
+      '  fileName: "App.tsx",',
+      "  lineNumber: 5,",
+      "  columnNumber: 2,",
+      "});",
+      "",
+    ].join("\n");
+
+    // Only genuine jsxDEV/jsx/jsxs calls may be rewritten: an analytics-style
+    // call must come back untouched (no marker props injected into its args).
+    expect(run(code)).toBeUndefined();
+  });
+
+  it("does not inject props into a decoy call next to a real jsxDEV call", () => {
+    const code = [
+      'const view = _jsxDEV("div", {}, void 0, false, { fileName: "x", lineNumber: 1, columnNumber: 2 }, this);',
+      "trackEvent(event, null, user, amount, {",
+      '  fileName: "App.tsx",',
+      "  lineNumber: 5,",
+      "  columnNumber: 2,",
+      "});",
+      "",
+    ].join("\n");
+
+    const out = run(code)?.code ?? "";
+
+    expect(out).toContain('"data-ttc"');
+    expect(out).not.toContain("trackEvent(event, {");
+    expect(out).toContain("trackEvent(event, null, user, amount, {");
+    expect(parseModule(out, FILE)).toBeTruthy();
+  });
+
+  it("still rewrites a real jsxDEV call with null props", () => {
+    const code =
+      'const view = _jsxDEV("span", null, void 0, false, { fileName: "x", lineNumber: 3, columnNumber: 4 }, this);\n';
+    const out = run(code)?.code ?? "";
+
+    expect(out).toContain('"data-ttc"');
+    expect(out).not.toContain('_jsxDEV("span", null');
+    expect(parseModule(out, FILE)).toBeTruthy();
+  });
+});

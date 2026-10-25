@@ -217,7 +217,7 @@ describe("editor option", () => {
     ).toBe("custom-open");
   });
 
-  it("registers the editor middleware by default and not for editor: 'auto'", () => {
+  it("registers the editor middleware by default and a containment check for editor: 'auto'", () => {
     const useCalls: unknown[] = [];
     const fakeServer = {
       middlewares: { use: (...args: unknown[]) => useCalls.push(args) },
@@ -233,7 +233,12 @@ describe("editor option", () => {
       configureServer?: (server: unknown) => void;
     };
     autoPlugin.configureServer?.(fakeServer);
-    expect(useCalls, "editor: 'auto' must delegate to Vite").toHaveLength(1);
+    // Auto mode registers one validating middleware that forwards in-root
+    // requests to Vite's launch-editor endpoint.
+    expect(
+      useCalls,
+      "editor: 'auto' must validate before delegating to Vite",
+    ).toHaveLength(2);
   });
 
   it("does not leak editor state between instances", () => {

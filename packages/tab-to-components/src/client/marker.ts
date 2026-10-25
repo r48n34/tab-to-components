@@ -96,3 +96,21 @@ export function formatEntryLabel(entry: LabelInput): string {
 export function formatNameLabel(name: string): string {
   return `<${name} />`;
 }
+
+/**
+ * Whether a marker's file is a plain project-relative path.
+ *
+ * Markers injected by the transform always are. `data-ttc` attributes can also
+ * be authored by application markup, so treat the value as untrusted: absolute
+ * paths, UNC paths and `..` segments are refused before the overlay asks the
+ * dev server to open anything.
+ */
+export function isSafeSourceFile(file: string): boolean {
+  if (typeof file !== "string" || file === "" || file.includes("\0")) {
+    return false;
+  }
+  const normalized = file.replace(/\\/g, "/");
+  if (normalized.startsWith("/")) return false;
+  if (/^[A-Za-z]:\//.test(normalized)) return false;
+  return !normalized.split("/").includes("..");
+}

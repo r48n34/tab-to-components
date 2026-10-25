@@ -172,9 +172,10 @@ check("published set is small (no sources/tests/maps)", publishedFiles.length < 
 check("publishes no source maps", publishedMaps.length === 0, publishedMaps.join(", "));
 // The unpacked payload is compiled output plus docs. Keep it comfortably small;
 // changelog/README growth must not silently balloon the published artifact. The
-// 0.4 source actions and the theme palette brought it to ~116 KiB, so the
-// budget tracks the current release line rather than the original 112 KiB.
-check("published payload is small", publishedBytes <= 120 * 1024, `${(publishedBytes / 1024).toFixed(1)} KiB`);
+// 0.4 source actions and the theme palette brought it to ~116 KiB; 0.4.1 added
+// the hardened launcher and endpoint checks (~135 KiB). The budget tracks the
+// current release line rather than the original 112 KiB.
+check("published payload is small", publishedBytes <= 144 * 1024, `${(publishedBytes / 1024).toFixed(1)} KiB`);
 // The browser runtime is minified by scripts/build.mjs; keep it that way so the
 // tarball does not silently double in size again.
 check("client runtime is minified", clientBytes > 0 && clientBytes <= 24 * 1024, `${clientBytes} bytes`);

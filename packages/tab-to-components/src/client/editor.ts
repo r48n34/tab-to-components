@@ -7,7 +7,7 @@
  */
 
 import type { ClientConfig } from "./config";
-import { formatMarker, type SourceMarker } from "./marker";
+import { formatMarker, isSafeSourceFile, type SourceMarker } from "./marker";
 
 /** A concrete editor request: the URL to hit plus the path it refers to. */
 export interface EditorTarget {
@@ -101,6 +101,21 @@ function getFetch(options: OpenInEditorOptions): FetchLike | null {
 }
 
 /**
+ * A marker is only safe to send when it names a plain project-relative file at
+ * a valid position. Page-authored `data-ttc` markup can otherwise point the
+ * overlay (and the dev-server request it triggers) at another location.
+ */
+function isValidSourceMarker(marker: SourceMarker): boolean {
+  return (
+    isSafeSourceFile(marker.file) &&
+    Number.isSafeInteger(marker.line) &&
+    marker.line >= 1 &&
+    Number.isSafeInteger(marker.column) &&
+    marker.column >= 1
+  );
+}
+
+/**
  * Ask Vite to open the source location. Never throws and never rejects:
  * failures are reported through `options.onError` and resolve to `false`.
  */
@@ -110,6 +125,15 @@ export async function openInEditor(
   options: OpenInEditorOptions = {},
 ): Promise<boolean> {
   const target = resolveEditorTarget(config, marker);
+  if (!isValidSourceMarker(marker)) {
+    options.onError?.(
+      `Refused to open an invalid source location: ${formatMarker(marker)}. ` +
+        "Copy it manually if you trust it.",
+      target,
+    );
+    return false;
+  }
+
   const fetchImpl = getFetch(options);
 
   if (!fetchImpl) {

@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { packageDir, playgroundDir } from "./helpers.js";
@@ -120,10 +121,12 @@ describe("default editor (no editor configured → VS Code)", () => {
 
   beforeAll(async () => {
     // Put a fake `code` command first on PATH so the default launcher can be
-    // observed without VS Code being installed.
-    fakeBinDir = path.join(packageDir, ".tmp", "fake-bin");
-    codeLog = path.join(packageDir, ".tmp", "fake-code.log");
-    fs.mkdirSync(fakeBinDir, { recursive: true });
+    // observed without VS Code being installed. It lives outside the project
+    // tree on purpose: the launcher refuses executables planted in the project
+    // directory (binary-planting guard), which is exactly what this fixture
+    // would otherwise look like.
+    fakeBinDir = fs.mkdtempSync(path.join(os.tmpdir(), "ttc-fake-editor-"));
+    codeLog = path.join(fakeBinDir, "code.log");
     fs.rmSync(codeLog, { force: true });
     if (process.platform === "win32") {
       fs.writeFileSync(
@@ -157,7 +160,7 @@ describe("default editor (no editor configured → VS Code)", () => {
     await server?.close();
     if (previousPath === undefined) delete process.env.PATH;
     else process.env.PATH = previousPath;
-    fs.rmSync(codeLog, { force: true });
+    fs.rmSync(fakeBinDir, { recursive: true, force: true });
   });
 
   it("uses the plugin's endpoint, i.e. it launches the editor itself", async () => {
@@ -219,5 +222,28 @@ describe("editor: 'auto' delegates to Vite / launch-editor", () => {
     );
     // Without a custom editor the path falls through to Vite's HTML fallback.
     expect(response.headers.get("content-type") ?? "").toContain("text/html");
+  });
+
+  it("rejects files outside the project root before Vite sees them", async () => {
+    const response = await fetch(
+      new URL(
+        `/__open-in-editor?file=${encodeURIComponent("D:/outside/file.tsx:1:1")}`,
+        base,
+      ),
+    );
+    expect(response.status).toBe(400);
+    await expect(response.text()).resolves.toContain(
+      "outside the project root",
+    );
+  });
+
+  it("rejects traversal to the project root's parent", async () => {
+    const response = await fetch(
+      new URL(
+        `/__open-in-editor?file=${encodeURIComponent("../../outside.tsx:1:1")}`,
+        base,
+      ),
+    );
+    expect(response.status).toBe(400);
   });
 });
