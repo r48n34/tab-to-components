@@ -328,6 +328,32 @@ If the editor cannot be launched, the terminal receives the error and a toast in
 
 ---
 
+## Browser extension (Chrome, no Vite config)
+
+A standalone **Plasmo-based Manifest V3 Chrome extension** ports the same
+workflow to any React dev server **without touching the app's Vite config**:
+[`packages/tab-to-components-extension`](./packages/tab-to-components-extension).
+
+- React 18 locations come from fiber `_debugSource`; React 19 recovers them from
+  `_debugStack` plus the dev server's source maps (Vite 8 verified — the mapped
+  positions match this plugin's `data-ttc` markers exactly).
+- The editor is opened through IDE URL schemes (`vscode://`, `cursor://`, …)
+  instead of launching a process on the dev-server machine.
+- Narrow loopback-only permissions (`localhost`, `127.0.0.1`, `[::1]`); not
+  published to the Chrome Web Store.
+- Coexists with this plugin: with `overlay: false` the extension reuses the
+  plugin's exact markers and provides its own UI.
+
+```bash
+pnpm gate:extension   # typecheck + tests + production build + manifest check
+```
+
+See the [extension README](./packages/tab-to-components-extension/README.md) for
+install/load-unpacked steps, settings, editor presets, QA checklist and
+limitations.
+
+---
+
 ## Compatibility
 
 Verified against real dev servers, SSR renders and production builds. The full 10-framework × 2-React evidence table, per-check results and resolved versions live in [docs/compatibility-matrix.md](https://github.com/r48n34/tab-to-components/blob/main/docs/compatibility-matrix.md); regenerate it with `pnpm install:compat` (seven isolated fixture roots) and `pnpm test:compat:full`, or run the same matrix without the Chrome tier via `pnpm test:compat`. The matrix also records an optional headless-Chrome Alt+click tier: a Browser cell is ✅ only when Chrome actually ran, and is reported as ⏭ skipped — never passed — when it cannot launch.

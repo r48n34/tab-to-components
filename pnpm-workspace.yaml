@@ -23,8 +23,19 @@ nodeLinker: hoisted
 # pnpm 11 requires a decision before a dependency may run install scripts.
 # esbuild's postinstall is denied: its prebuilt platform binary ships in the
 # optional @esbuild/win32-x64 package, so the postinstall is not needed here.
+#
+# The Plasmo/Parcel toolchain (packages/tab-to-components-extension) ships every
+# native module as a prebuilt optional dependency for each platform
+# (@parcel/watcher-*, @swc/core-*, @lmdb/lmdb-*, @img/sharp-*), so their
+# postinstall/compile fallbacks are denied as well. If a platform prebuild is
+# ever unavailable, the corresponding entry must be flipped to `true`.
 allowBuilds:
   esbuild: false
+  "@parcel/watcher": false
+  "@swc/core": false
+  lmdb: false
+  msgpackr-extract: false
+  sharp: false
 
 minimumReleaseAgeExclude:
   - "@babel/helper-string-parser@7.29.11"

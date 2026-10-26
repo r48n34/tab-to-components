@@ -24,3 +24,8 @@ compat/**/.vite/
 examples/
 PUBLISHING.md
 /.agent-teams
+
+# Plasmo browser extension build artifacts
+packages/tab-to-components-extension/build/
+packages/tab-to-components-extension/.plasmo/
+.parcel-cache/

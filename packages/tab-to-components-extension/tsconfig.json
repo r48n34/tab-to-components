@@ -1,0 +1,35 @@
+{
+  "compilerOptions": {
+    "target": "esnext",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "jsx": "preserve",
+    "module": "esnext",
+    "moduleResolution": "node",
+    "noEmit": true,
+    "esModuleInterop": true,
+    "allowJs": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "incremental": false,
+    "types": ["chrome", "node"]
+  },
+  "exclude": ["node_modules", "build", ".plasmo"],
+  "include": [
+    ".plasmo/index.d.ts",
+    "contents/**/*.ts",
+    "contents/**/*.tsx",
+    "lib/**/*.ts",
+    "lib/**/*.tsx",
+    "popup.tsx",
+    "options.tsx",
+    "background.ts",
+    "test/**/*.ts"
+  ]
+}

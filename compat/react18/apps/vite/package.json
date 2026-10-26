@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:ext": "vite --config vite.ext.config.ts",
     "build": "vite build"
   },
   "dependencies": {

@@ -16,6 +16,11 @@
     "test:compat:full": "pnpm build && node scripts/compat-matrix.mjs --browser --write-doc",
     "verify:package": "pnpm build && pnpm --filter tab-to-components verify:package",
     "e2e": "pnpm build && node scripts/e2e.mjs",
+    "dev:extension": "pnpm --filter tab-to-components-extension dev",
+    "build:extension": "pnpm --filter tab-to-components-extension build",
+    "test:extension": "pnpm --filter tab-to-components-extension typecheck && pnpm --filter tab-to-components-extension test",
+    "verify:extension": "pnpm --filter tab-to-components-extension build && node packages/tab-to-components-extension/scripts/verify-build.mjs",
+    "gate:extension": "pnpm test:extension && pnpm verify:extension",
     "gate": "pnpm build && pnpm typecheck && pnpm --filter tab-to-components test && pnpm test:integration && pnpm test:matrix && pnpm test:compat && pnpm verify:package"
   },
   "devDependencies": {

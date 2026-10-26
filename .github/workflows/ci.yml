@@ -49,6 +49,37 @@ jobs:
       - name: Build, type-check, tests, Vite matrix, compatibility matrix and package verification
         run: pnpm gate
 
+  # The browser-extension port is independent of the Vite plugin's build, so it
+  # gets its own job: typecheck, unit/integration tests (happy-dom, no browser),
+  # production Plasmo build and a manifest/bundle contract check.
+  extension:
+    name: Chrome extension (typecheck, tests, build, manifest check)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm --filter tab-to-components-extension typecheck
+
+      - name: Tests
+        run: pnpm --filter tab-to-components-extension test
+
+      - name: Production build
+        run: pnpm --filter tab-to-components-extension build
+
+      - name: Verify manifest and bundles
+        run: node packages/tab-to-components-extension/scripts/verify-build.mjs
+
   # The end-to-end suite drives a real browser. It runs locally with
   # `pnpm e2e`; enable this job if you want it in CI (the runner ships Chrome).
   # e2e:

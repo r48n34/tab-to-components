@@ -1,0 +1,53 @@
+{
+  "name": "tab-to-components-extension",
+  "displayName": "tab-to-components",
+  "version": "0.1.0",
+  "description": "Alt+click any React element in a local dev server to open its JSX source in your editor or copy its source path. Standalone Chrome extension (Manifest V3) built with Plasmo; no Vite plugin required.",
+  "author": "reemo (https://github.com/r48n34)",
+  "license": "MIT",
+  "private": true,
+  "homepage": "https://github.com/r48n34/tab-to-components",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/r48n34/tab-to-components.git",
+    "directory": "packages/tab-to-components-extension"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "plasmo dev",
+    "build": "plasmo build",
+    "package": "plasmo package",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "verify:build": "node scripts/verify-build.mjs"
+  },
+  "manifest": {
+    "permissions": ["storage", "clipboardWrite"],
+    "host_permissions": [
+      "http://localhost/*",
+      "https://localhost/*",
+      "http://127.0.0.1/*",
+      "https://127.0.0.1/*",
+      "http://[::1]/*",
+      "https://[::1]/*"
+    ]
+  },
+  "dependencies": {
+    "@jridgewell/trace-mapping": "^0.3.31",
+    "plasmo": "0.90.5",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.3.6",
+    "@types/node": "^26.6.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "happy-dom": "^21.0.4",
+    "typescript": "5.9.3",
+    "vitest": "^5.0.5"
+  }
+}
