@@ -143,8 +143,19 @@ Source locations are recovered per fiber, deepest layer first:
    argument and instead captures a stack at element creation. The first
    application frame points at the compiled `_jsxDEV(...)` call; the dev
    server's source map (Vite inlines it in each module) maps that generated
-   position back to the original JSX site. The map's absolute `file` field
-   provides full paths.
+   position back to the original JSX site.
+
+Vite's dev source maps often carry only a server-relative `sources` entry and no
+absolute `file` (Vite 7 and 8 on Windows do exactly that), so the map alone is
+not enough to build an editor URL. The extension therefore also recovers the
+absolute path the bundler embedded in the transformed module
+(`_jsxFileName`, the react-refresh `RefreshRuntime.register(...)` call, or
+esbuild's `fileName`), derives the project root from it, and uses that root for
+every other location on the page — including the Vite plugin's
+project-relative `data-ttc` markers. **"Open in IDE" therefore emits a full
+absolute URL such as
+`vscode://file/C:/Users/me/proj/src/App.tsx:20:9` without configuring a
+project root.**
 
 The agent is injected into every frame; the inspector runs in the isolated
 world so it can use `chrome.storage`, the clipboard and `chrome.runtime`.
@@ -199,6 +210,13 @@ The IDE's URL handler is missing or Chrome blocked the external protocol. Allow
 the protocol in Chrome's prompt (or chrome://settings/handlers), make sure the
 IDE is installed, and use the copy actions as a fallback.
 
+**"Open in IDE" says it needs a project root.**
+The extension could not recover an absolute path: the dev server's source map
+has no absolute path *and* the transformed module does not embed one (some
+non-Vite servers strip `_jsxFileName`/`fileName`). Set a project root for the
+origin in the options page, or use the copy actions. Vite 7/8 dev servers on
+Windows/Linux are handled automatically.
+
 **Two overlays appear.**
 The Vite plugin's overlay was detected late. Reload the page, or disable the
 plugin's overlay (`overlay: false`) and keep the extension UI.
@@ -248,8 +266,8 @@ worker threads).
 ### Tests
 
 - `test/source/*` — path safety, stack parsing, React 18 source objects, real
-  Vite source-map fixture (`test/fixtures/vite-react19-module.ts`), layered
-  resolution.
+  Vite source-map fixtures (`test/fixtures/vite-react19-module.ts` and
+  `test/fixtures/vite-react19-no-map-file.ts`), layered resolution.
 - `test/agent/*` — fiber discovery/naming, chain walk, modifier handling.
 - `test/install.test.ts` — happy-dom integration of the overlay controller
   (hover label, action/chain menus, copy/open flows, protocol messages).
@@ -258,10 +276,14 @@ worker threads).
   `test/actions.test.ts`, `test/chain.test.ts`, `test/clipboard.test.ts`,
   `test/content-config.test.ts` — helpers and static content-script config.
 
-The fixture is generated from `playground/vite-react/src/App.tsx` through Vite 8
-+ `@vitejs/plugin-react` 6; its expected positions
+The fixtures are generated from `playground/vite-react/src/App.tsx` through
+Vite 8 + `@vitejs/plugin-react` 6; their expected positions
 (`src/App.tsx:9:5`, `10:7`, `20:9`) are exactly the markers the Vite plugin
 injects, which is the parity guarantee for the React 19 source-map path.
+`vite-react19-module.ts` keeps a hand-canonicalized absolute `file` in the map;
+`vite-react19-no-map-file.ts` matches what Vite 7/8 actually serve in dev — no
+`file`, relative `sources` — so the absolute path can only come from the
+transformed code (`_jsxFileName` / `RefreshRuntime.register`).
 
 ### Manual QA checklist (Chrome)
 
@@ -271,7 +293,11 @@ injects, which is the parity guarantee for the React 19 source-map path.
 3. Alt+hover the button → `<Button /> src/App.tsx:20:9`; Alt+click → picker;
    each copy action writes the exact text; Alt+right-click lists
    `<button /> → <Button /> → <FeatureCard /> → <App />`.
-4. Open in IDE prompts for VS Code and opens the file at line 20.
+4. Open in IDE prompts for VS Code and opens the file at line 20 — with **no
+   project root configured**. The launched URL must be a full absolute path,
+   e.g. `vscode://file/C:/Users/me/proj/src/App.tsx:20:9` (Windows) or
+   `vscode://file/home/me/proj/src/App.tsx:20:9` (macOS/Linux); a relative
+   `vscode://file/src/App.tsx` means absolute-path recovery regressed.
 5. HMR edit `App.tsx`, save, hover again → updated line.
 6. Repeat with React 18:
    `pnpm --dir compat/react18/apps/vite exec vite --config vite.ext.config.ts`.

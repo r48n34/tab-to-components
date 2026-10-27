@@ -15,7 +15,6 @@
  * path" and editor URLs.
  */
 
-import { parseMarker } from "./location";
 import type { RawEntry } from "../protocol";
 import { locationFromDebugSource } from "./react18";
 import {
@@ -32,6 +31,8 @@ import {
   isSafeRelativeFile,
   joinRoot,
   normalizeSlashes,
+  parseMarker,
+  projectRootFrom,
   type SourceLocation,
   type LocationSource,
 } from "./location";
@@ -122,6 +123,14 @@ export function createSourceResolver(
 ): SourceResolver {
   const { pageOrigin, projectRoot, fetchText, base = "/" } = options;
   let mapResolver: SourceMapResolver | null = null;
+  /**
+   * Project root recovered from a resolved location (absolute path + matching
+   * project-relative path). React 19/Vite only exposes relative paths in its
+   * source maps, so an absolute path learned from one module lets the marker
+   * and `_debugSource` layers — and later clicks — produce absolute editor
+   * URLs without the user configuring a root.
+   */
+  let inferredRoot: string | null = null;
 
   function maps(): SourceMapResolver {
     if (mapResolver === null) {
@@ -135,20 +144,33 @@ export function createSourceResolver(
     return mapResolver;
   }
 
-  async function resolve(entry: RawEntry): Promise<ResolvedEntry> {
+  function rememberRoot(location: SourceLocation | null): void {
+    if (location === null) return;
+    const root = projectRootFrom(location.absoluteFile, location.relativeFile);
+    if (root !== null) inferredRoot = root;
+  }
+
+  /** The root used to synthesize absolute paths: user setting first. */
+  function effectiveRoot(): string | null {
+    return projectRoot ?? inferredRoot;
+  }
+
+  function buildResolved(
+    entry: RawEntry,
+    mapped: SourceLocation | null,
+  ): ResolvedEntry {
     const marker = entry.marker ? parseMarker(entry.marker) : null;
+    const root = effectiveRoot();
     const debugSource = entry.debugSource
-      ? locationFromDebugSource(entry.debugSource, { projectRoot })
+      ? locationFromDebugSource(entry.debugSource, { projectRoot: root })
       : null;
-    const mapped =
-      entry.stackFrame !== undefined
-        ? await maps().resolveFrame(entry.stackFrame)
-        : null;
+    rememberRoot(debugSource);
 
     const location = locationFromLayers(
       { marker, debugSource, mapped },
-      projectRoot,
+      effectiveRoot(),
     );
+    rememberRoot(location);
 
     return {
       name: entry.name,
@@ -157,10 +179,29 @@ export function createSourceResolver(
     };
   }
 
+  async function resolve(entry: RawEntry): Promise<ResolvedEntry> {
+    const mapped =
+      entry.stackFrame !== undefined
+        ? await maps().resolveFrame(entry.stackFrame)
+        : null;
+    rememberRoot(mapped);
+    return buildResolved(entry, mapped);
+  }
+
   return {
     resolve,
     async resolveChain(entries: readonly RawEntry[]): Promise<ResolvedEntry[]> {
-      return Promise.all(entries.map((entry) => resolve(entry)));
+      // Resolve every source-map frame first so a root learned from any entry
+      // is available to the marker-only entries of the same chain.
+      const mapped = await Promise.all(
+        entries.map((entry) =>
+          entry.stackFrame !== undefined
+            ? maps().resolveFrame(entry.stackFrame)
+            : Promise.resolve(null),
+        ),
+      );
+      for (const location of mapped) rememberRoot(location);
+      return entries.map((entry, index) => buildResolved(entry, mapped[index] ?? null));
     },
   };
 }

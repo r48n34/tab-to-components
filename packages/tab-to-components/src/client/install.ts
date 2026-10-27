@@ -10,6 +10,7 @@
 import {
   sourceActionCopy,
   sourceActionDetail,
+  sourceActionIcon,
   sourceActionLabel,
 } from "./actions";
 import {
@@ -247,6 +248,7 @@ export function install(userConfig?: Partial<ClientConfig> | null): () => void {
     return config.clickActions.map((action) => ({
       label: sourceActionLabel(action),
       detail: sourceActionDetail(action, entry.marker, config.root),
+      icon: sourceActionIcon(action),
       action,
       onActivate: () => runAction(action, entry),
     }));
@@ -279,6 +281,7 @@ export function install(userConfig?: Partial<ClientConfig> | null): () => void {
       chain.map((entry) => ({
         label: formatNameLabel(entry.name),
         detail: formatMarker(entry.marker),
+        icon: "component",
         onActivate: () => openEntry(entry),
       })),
       x,

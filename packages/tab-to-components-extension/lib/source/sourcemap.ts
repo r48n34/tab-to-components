@@ -17,11 +17,15 @@ import { originalPositionFor, TraceMap } from "@jridgewell/trace-mapping";
 
 import type { RawStackFrame } from "../protocol";
 import {
+  alignModulePath,
   createLocation,
+  fileNameOf,
   fileUrlToPath,
   isSafeRelativeFile,
+  joinRoot,
   normalizeAbsolutePath,
   normalizeSlashes,
+  projectRootFrom,
   stripRoot,
   type SourceLocation,
 } from "./location";
@@ -137,6 +141,87 @@ function safeDecode(value: string): string {
   }
 }
 
+/**
+ * Absolute original paths dev servers embed in the *code* they serve, for the
+ * bundlers/plugins verified so far:
+ *
+ *   Babel (@vitejs/plugin-react):  var _jsxFileName = "C:/proj/src/App.tsx";
+ *   react-refresh:                 RefreshRuntime.register(type, "C:/proj/src/App.tsx" + ' ' + id)
+ *   esbuild (jsxDEV source arg):   { fileName: "C:/proj/src/App.tsx", lineNumber: 4, … }
+ *
+ * This matters because the inline dev source map does not always carry the
+ * absolute path (`file` is often absent and `sources` are server-relative), so
+ * without this a React 19 location would have no path the editor can open.
+ */
+const EMBEDDED_FILE_NAME_PATTERNS: readonly RegExp[] = [
+  /_jsxFileName\s*=\s*("(?:[^"\\]|\\.)*")/g,
+  /\bfileName\s*:\s*("(?:[^"\\]|\\.)*")/g,
+  /RefreshRuntime\.register\(\s*[^,]+,\s*("(?:[^"\\]|\\.)*")/g,
+  /\$RefreshReg\$\(\s*[^,]+,\s*("(?:[^"\\]|\\.)*")/g,
+];
+
+/** Decode a JS double/single-quoted string literal body into plain text. */
+function decodeStringLiteral(literal: string): string | null {
+  if (literal.length < 2) return null;
+  const quote = literal[0];
+  const last = literal[literal.length - 1];
+  if ((quote !== '"' && quote !== "'") || last !== quote) return null;
+  const body = literal.slice(1, -1);
+  if (body === "") return null;
+  return body.replace(
+    /\\(u[0-9a-fA-F]{4}|["'\\/bfnrt])/g,
+    (_match, escape: string) => {
+      if (escape.length === 5 && escape[0] === "u") {
+        return String.fromCharCode(Number.parseInt(escape.slice(1), 16));
+      }
+      switch (escape) {
+        case "b":
+          return "\b";
+        case "f":
+          return "\f";
+        case "n":
+          return "\n";
+        case "r":
+          return "\r";
+        case "t":
+          return "\t";
+        default:
+          return escape;
+      }
+    },
+  );
+}
+
+/**
+ * Recover the absolute original path a transformed dev module was compiled
+ * from. `expectedFileName` (a base name such as `App.tsx`) keeps unrelated
+ * strings from being mistaken for the module itself.
+ */
+export function absoluteModuleFileFromCode(
+  code: string,
+  expectedFileName: string | null = null,
+): string | null {
+  if (typeof code !== "string" || code === "") return null;
+  for (const pattern of EMBEDDED_FILE_NAME_PATTERNS) {
+    pattern.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(code)) !== null) {
+      const literal = match[1];
+      if (literal === undefined) continue;
+      const decoded = decodeStringLiteral(literal);
+      if (decoded === null) continue;
+      const absolute = normalizeAbsolutePath(decoded);
+      if (absolute === null) continue;
+      if (expectedFileName !== null && expectedFileName !== "") {
+        const base = absolute.slice(absolute.lastIndexOf("/") + 1);
+        if (base.toLowerCase() !== expectedFileName.toLowerCase()) continue;
+      }
+      return absolute;
+    }
+  }
+  return null;
+}
+
 /** Parse and validate a raw source-map JSON payload. */
 export function parseSourceMap(text: string): RawSourceMap | null {
   if (typeof text !== "string" || text.length === 0 || text.length > MAX_MAP_CHARS) {
@@ -241,10 +326,21 @@ export function pathsFromSource(
   return { relativeFile, absoluteFile: null };
 }
 
+/** `root + relative` for templates/paths that need an absolute file. */
+function deriveAbsoluteFile(
+  relativeFile: string | null,
+  root: string | null,
+): string | null {
+  if (relativeFile === null || root === null) return null;
+  return joinRoot(root, relativeFile);
+}
+
 interface LoadedModule {
   tracer: TraceMap;
   map: RawSourceMap;
   moduleUrl: string;
+  /** Absolute original file recovered from the module's own code, if any. */
+  absoluteFile: string | null;
 }
 
 function isAbsoluteMapFile(value: string | undefined): string | null {
@@ -262,8 +358,10 @@ function absoluteFileFromMap(
   map: RawSourceMap,
   source: string,
   fallback: string | null,
+  distrustMapFile = false,
 ): string | null {
   if (fallback !== null) return fallback;
+  if (distrustMapFile) return null;
   const mapFile = isAbsoluteMapFile(map.file);
   if (mapFile === null) return null;
   const sourceBase = source.slice(Math.max(source.lastIndexOf("/"), source.lastIndexOf("\\")) + 1);
@@ -275,6 +373,35 @@ function absoluteFileFromMap(
     return mapFile;
   }
   return null;
+}
+
+/** The dev-server URL path of a module (`/src/App.tsx?t=1` → `/src/App.tsx`). */
+function modulePathnameOf(moduleUrl: string): string | null {
+  try {
+    return new URL(moduleUrl).pathname;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether a map `file` value is the server URL path (`/src/App.tsx` or
+ * `/cats/src/App.tsx`) rather than a filesystem path. Dev servers have emitted
+ * both; a server path must never reach an editor URL, where VS Code would
+ * resolve it against the drive root instead of the project.
+ */
+function isServerRelativeMapPath(
+  value: string,
+  modulePathname: string | null,
+  moduleRelative: string | null,
+  basePrefix: string,
+): boolean {
+  if (!value.startsWith("/") || value.startsWith("//")) return false;
+  if (modulePathname !== null && value === modulePathname) return true;
+  if (moduleRelative === null) return false;
+  if (value === `/${moduleRelative}`) return true;
+  const normalizedBase = basePrefix.endsWith("/") ? basePrefix : `${basePrefix}/`;
+  return value === `${normalizedBase}${moduleRelative}`;
 }
 
 function defaultFetchText(url: string): Promise<string | null> {
@@ -320,6 +447,11 @@ export function createSourceMapResolver(
       try {
         const code = await fetchText(moduleUrl);
         if (code === null) return null;
+        const modulePath = modulePathnameOf(moduleUrl);
+        const absoluteFile =
+          modulePath === null
+            ? null
+            : absoluteModuleFileFromCode(code, fileNameOf(safeDecode(modulePath)));
         const mapUrl = extractSourceMapUrl(code);
         if (mapUrl === null) return null;
 
@@ -345,6 +477,7 @@ export function createSourceMapResolver(
           ),
           map,
           moduleUrl,
+          absoluteFile,
         };
       } catch {
         return null;
@@ -384,20 +517,54 @@ export function createSourceMapResolver(
     }
     if (position.source === null || position.line === null) return null;
 
-    const paths = pathsFromSource(position.source, moduleUrl, base);
+    const modulePathname = modulePathnameOf(moduleUrl);
+    const decodedPathname = modulePathname === null ? null : safeDecode(modulePathname);
+    // Aligning the served URL with the module's real absolute path recovers
+    // both the project-relative path and a non-root dev-server base
+    // (`/cats/app/routes/home.tsx` on disk at `C:/proj/app/routes/home.tsx`),
+    // which the configured `base` may not reflect. `/@fs/` URLs already carry
+    // the absolute path, so they are left to the normal path parsing.
+    const alignment =
+      decodedPathname !== null && !decodedPathname.startsWith("/@fs/")
+        ? alignModulePath(decodedPathname, loaded.absoluteFile)
+        : null;
+    const effectiveBase = alignment?.basePrefix ?? base;
+    const paths = pathsFromSource(position.source, moduleUrl, effectiveBase);
+    // The project root can be recovered from the module's own absolute path
+    // even when the source map carries neither `file` nor absolute `sources`,
+    // as is the case for Vite dev servers. Every mapped location can then be
+    // made absolute.
+    const moduleRelative =
+      alignment?.relativeFile ??
+      (decodedPathname === null
+        ? null
+        : serverPathToRelative(decodedPathname, effectiveBase));
+    const inferredRoot = projectRootFrom(loaded.absoluteFile, moduleRelative);
     const relativeFile =
       paths.relativeFile ??
       (projectRoot && paths.absoluteFile
         ? stripRoot(paths.absoluteFile, projectRoot)
         : null);
-    const absoluteFile = absoluteFileFromMap(
-      loaded.map,
-      position.source,
-      paths.absoluteFile,
-    );
+    const mapFile = isAbsoluteMapFile(loaded.map.file);
+    const distrustMapFile =
+      mapFile !== null &&
+      isServerRelativeMapPath(
+        mapFile,
+        modulePathname,
+        moduleRelative,
+        effectiveBase,
+      );
+    const absoluteFile =
+      absoluteFileFromMap(loaded.map, position.source, paths.absoluteFile, distrustMapFile) ??
+      deriveAbsoluteFile(relativeFile, projectRoot ?? inferredRoot);
+    const effectiveRelative =
+      relativeFile ??
+      (absoluteFile !== null
+        ? stripRoot(absoluteFile, projectRoot ?? inferredRoot)
+        : null);
 
     return createLocation({
-      relativeFile,
+      relativeFile: effectiveRelative,
       absoluteFile,
       line: position.line,
       column: (position.column ?? 0) + 1,

@@ -5,6 +5,10 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+### Overlay
+
+- Every row of the source action picker and the component chain picker now leads with a small icon for what it acts on: an external link for **Open in IDE**, a page for **Copy file name**, a folder or a hard drive for the relative/full path, a pin for the **file:line:column** location, and a stacked box for chain rows. The icons are hand-drawn `aria-hidden` SVGs rendered inside the existing shadow root, so app CSS cannot affect them, they need no font or network request, and the rows' text content (the copy targets, toasts and e2e selectors) is unchanged.
+
 ### Compatibility matrix
 
 - Added Next.js to the compatibility matrix as **not applicable** for React 18 and React 19. `next dev` runs Turbopack (default in Next.js 16) or webpack with the SWC-based Next.js Compiler, not Vite, so the marker transform, virtual client runtime and `__ttc/open-in-editor` endpoint cannot be installed. Next.js 16.4.3 accepts React 18.2+ for the Pages Router and React 19 for the App Router — the React version is not the blocker.

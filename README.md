@@ -141,6 +141,8 @@ Remix v2 supports Vite 5/6 and React 18. Remix v1 uses its classic esbuild compi
 | <kbd>Alt</kbd> + right click | Opens the **component chain picker** listing every marked JSX ancestor (`<button />`, `<Button />`, `<Card />`, …). Click a row, or use <kbd>↑</kbd>/<kbd>↓</kbd>/<kbd>Enter</kbd>, <kbd>Esc</kbd> to close. |
 | After an action | A short toast confirms the file that was opened or the text that was copied. |
 
+Each picker row starts with a small icon for what it acts on — an external link for **Open in IDE**, a page for **Copy file name**, a folder or a hard drive for the relative/full path, a pin for the **file:line:column** location, and a stacked box for chain rows — so the choices are scannable at a glance.
+
 Configuring a **single** action skips the picker and runs it immediately — `clickActions: ["open"]` keeps the pre-0.4 instant-open behavior (see [Copy source paths](#copy-source-paths)).
 
 The app's own click handler is **not** triggered (the plugin suppresses it in the capture phase), and no overlay DOM is added except one `<div data-ttc-ui>` shadow root with `pointer-events: none`. The overlay is **dark by default**; set `theme: "light"` to match a light app (see [Theme](#theme)).
@@ -336,7 +338,10 @@ workflow to any React dev server **without touching the app's Vite config**:
 
 - React 18 locations come from fiber `_debugSource`; React 19 recovers them from
   `_debugStack` plus the dev server's source maps (Vite 8 verified — the mapped
-  positions match this plugin's `data-ttc` markers exactly).
+  positions match this plugin's `data-ttc` markers exactly). Vite's dev maps
+  carry no absolute path, so the extension recovers it from the transformed
+  module itself and builds full URLs such as
+  `vscode://file/C:/Users/me/proj/src/App.tsx:20:9`.
 - The editor is opened through IDE URL schemes (`vscode://`, `cursor://`, …)
   instead of launching a process on the dev-server machine.
 - Narrow loopback-only permissions (`localhost`, `127.0.0.1`, `[::1]`); not

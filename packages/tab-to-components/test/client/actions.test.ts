@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   sourceActionCopy,
   sourceActionDetail,
+  sourceActionIcon,
   sourceActionLabel,
   type ClickAction,
   type SourceMarker,
@@ -44,6 +45,23 @@ describe("source action labels", () => {
       "D:/proj/app/components/MyBox.tsx",
       "app/components/MyBox.tsx:12:5",
     ]);
+  });
+});
+
+describe("source action icons", () => {
+  it("gives every action the icon for what it acts on", () => {
+    expect(ACTIONS.map((action) => sourceActionIcon(action))).toEqual([
+      "open",
+      "copy-file",
+      "copy-path",
+      "copy-full-path",
+      "copy-location",
+    ]);
+  });
+
+  it("keeps every action's icon distinct", () => {
+    const icons = ACTIONS.map((action) => sourceActionIcon(action));
+    expect(new Set(icons).size).toBe(ACTIONS.length);
   });
 });
 

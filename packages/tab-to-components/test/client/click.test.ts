@@ -222,6 +222,20 @@ describe("source action picker", () => {
       "Copy full path  D:/proj/app/routes/home.tsx",
     );
     expect(rows[0]?.hasAttribute("data-active")).toBe(true);
+    // Each row leads with a decorative icon describing what it acts on; the
+    // icon must not leak into the row's text.
+    expect(
+      rows[0]?.querySelector('.ttc-menu-icon[data-icon="open"]'),
+    ).not.toBeNull();
+    expect(
+      rows[1]?.querySelector('.ttc-menu-icon[data-icon="copy-file"]'),
+    ).not.toBeNull();
+    expect(
+      rows[2]?.querySelector('.ttc-menu-icon[data-icon="copy-full-path"]'),
+    ).not.toBeNull();
+    const icon = rows[0]?.querySelector(".ttc-menu-icon");
+    expect(icon?.getAttribute("aria-hidden")).toBe("true");
+    expect(icon?.getAttribute("focusable")).toBe("false");
   });
 
   it("opens the editor when the first action is chosen", async () => {
@@ -313,6 +327,12 @@ describe("source action picker", () => {
     expect(rows[1]?.textContent).toBe(
       "Copy file:line:column  app/routes/home.tsx:19:7",
     );
+    expect(
+      rows[0]?.querySelector('.ttc-menu-icon[data-icon="copy-path"]'),
+    ).not.toBeNull();
+    expect(
+      rows[1]?.querySelector('.ttc-menu-icon[data-icon="copy-location"]'),
+    ).not.toBeNull();
 
     clickRow(rowWithLabel("Copy relative path"));
     await vi.waitFor(() => {
@@ -499,6 +519,13 @@ describe("component chain menu", () => {
     expect(rows[0]?.textContent).toBe("<button />  app/components/Button.tsx:6:10");
     expect(rows[1]?.textContent).toBe("<Button />  app/routes/home.tsx:19:7");
     expect(rows[0]?.hasAttribute("data-active")).toBe(true);
+    // Chain rows lead with the component icon and keep their text intact.
+    expect(
+      rows[0]?.querySelector('.ttc-menu-icon[data-icon="component"]'),
+    ).not.toBeNull();
+    expect(
+      rows[1]?.querySelector('.ttc-menu-icon[data-icon="component"]'),
+    ).not.toBeNull();
 
     const down = new KeyboardEvent("keydown", {
       key: "ArrowDown",

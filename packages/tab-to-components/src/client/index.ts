@@ -11,7 +11,12 @@ import type { ClientConfig } from "./config";
 import { install } from "./install";
 
 export type { SourceActionCopy } from "./actions";
-export { sourceActionCopy, sourceActionDetail, sourceActionLabel } from "./actions";
+export {
+  sourceActionCopy,
+  sourceActionDetail,
+  sourceActionIcon,
+  sourceActionLabel,
+} from "./actions";
 export type { ChainEntry } from "./chain";
 export { entryFromElement, getComponentChain, nearestComponentEntry, pickPrimaryEntry } from "./chain";
 export type { ClipboardLike, CopyTextOptions } from "./clipboard";

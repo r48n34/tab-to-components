@@ -168,6 +168,87 @@ export function stripRoot(
   return isSafeRelativeFile(relative) ? relative : null;
 }
 
+/**
+ * The inverse of `stripRoot`: given an absolute file and its project-relative
+ * path (`D:/proj/src/App.tsx` + `src/App.tsx`), return the project root
+ * (`D:/proj`). Used to recover the project root from a dev module whose
+ * absolute path is known, so locations that only carry a project-relative path
+ * can still be turned into absolute ones.
+ *
+ * Returns `null` when the two paths do not agree or the result is unusable
+ * (e.g. a bare filesystem root, which `joinRoot` cannot round-trip).
+ */
+export function projectRootFrom(
+  absoluteFile: string | null,
+  relativeFile: string | null,
+): string | null {
+  if (absoluteFile === null || relativeFile === null) return null;
+  const absolute = normalizeSlashes(absoluteFile);
+  const relative = normalizeSlashes(relativeFile).replace(/^\/+/, "");
+  if (!isSafeAbsolutePath(absolute)) return null;
+  if (!isSafeRelativeFile(relative)) return null;
+  const suffix = `/${relative}`;
+  if (absolute.length <= suffix.length) return null;
+  if (absolute.toLowerCase().slice(-suffix.length) !== suffix.toLowerCase()) {
+    return null;
+  }
+  const root = absolute.slice(0, absolute.length - suffix.length);
+  if (root === "") return null;
+  return isSafeAbsolutePath(root) ? root : null;
+}
+
+/** What a module URL tells us once it is aligned with its absolute file. */
+export interface ModulePathAlignment {
+  /** Project-relative path the dev server serves (`app/routes/home.tsx`). */
+  relativeFile: string;
+  /** URL prefix the dev server mounts the project on (`/cats/`, or `/`). */
+  basePrefix: string;
+}
+
+/**
+ * Align a module's URL path with the absolute file the bundler embedded in it.
+ *
+ * A dev server may mount the project under a non-root base
+ * (`/cats/app/routes/home.tsx` on disk at
+ * `C:/proj/app/routes/home.tsx`). Comparing the two from the end recovers both
+ * the project-relative path and the base prefix without trusting any
+ * configuration:
+ *
+ *   `/cats/app/routes/home.tsx` + `C:/proj/app/routes/home.tsx`
+ *     → { relativeFile: "app/routes/home.tsx", basePrefix: "/cats/" }
+ */
+export function alignModulePath(
+  modulePathname: string,
+  absoluteFile: string | null,
+): ModulePathAlignment | null {
+  if (absoluteFile === null) return null;
+  const pathname = normalizeSlashes(modulePathname);
+  if (!pathname.startsWith("/") || pathname.startsWith("//")) return null;
+  const absolute = normalizeSlashes(absoluteFile);
+  if (!isSafeAbsolutePath(absolute)) return null;
+
+  const urlSegments = pathname.split("/").filter((segment) => segment !== "");
+  if (urlSegments.length === 0) return null;
+  const fileSegments = absolute.split("/");
+
+  let matched = 0;
+  while (matched < urlSegments.length && matched < fileSegments.length) {
+    const urlSegment = urlSegments[urlSegments.length - 1 - matched];
+    const fileSegment = fileSegments[fileSegments.length - 1 - matched];
+    if (urlSegment === undefined || fileSegment === undefined) break;
+    if (urlSegment.toLowerCase() !== fileSegment.toLowerCase()) break;
+    matched += 1;
+  }
+  if (matched === 0) return null;
+
+  const relativeFile = urlSegments.slice(urlSegments.length - matched).join("/");
+  if (!isSafeRelativeFile(relativeFile)) return null;
+  const prefixSegments = urlSegments.slice(0, urlSegments.length - matched);
+  const basePrefix =
+    prefixSegments.length === 0 ? "/" : `/${prefixSegments.join("/")}/`;
+  return { relativeFile, basePrefix };
+}
+
 /** Turn a `file://` URL into a filesystem path; `null` when malformed. */
 export function fileUrlToPath(value: string): string | null {
   try {

@@ -15,6 +15,8 @@ import {
   toFileUri,
 } from "../lib/editor";
 import type { SourceLocation } from "../lib/source/location";
+import { createSourceResolver } from "../lib/source/resolve";
+import { viteModuleNoMapFile as noFileFixture } from "./fixtures/vite-react19-no-map-file";
 
 function location(overrides: Partial<SourceLocation> = {}): SourceLocation {
   return {
@@ -57,6 +59,22 @@ describe("expandEditorUrl", () => {
       root: null,
     });
     expect(result).toEqual({ url: "vscode://file/D:/proj/src/App.tsx:12:5" });
+  });
+
+  it("keeps the full Windows absolute path requested by VS Code", () => {
+    const result = expandEditorUrl("vscode://file/{path}:{line}:{column}", {
+      location: location({
+        file: "popup.tsx",
+        relativeFile: "packages/tab-to-components-extension/popup.tsx",
+        absoluteFile:
+          "C:/Users/reemo/Documents/GitHub/tab-to-components/packages/tab-to-components-extension/popup.tsx",
+      }),
+      root: null,
+    });
+    expect(result).toEqual({
+      url: "vscode://file/C:/Users/reemo/Documents/GitHub/tab-to-components/packages/tab-to-components-extension/popup.tsx:12:5",
+    });
+    if ("url" in result) expect(isAllowedEditorUrl(result.url)).toBe(true);
   });
 
   it("percent-encodes spaces and unicode in the path", () => {
@@ -128,8 +146,37 @@ describe("expandEditorUrl", () => {
   });
 });
 
-describe("scheme helpers", () => {
-  it("allows editor schemes and blocks script/navigation schemes", () => {
+describe("Open in IDE with a React 19 / Vite location", () => {
+  it("builds vscode://file/<absolute> without a configured project root", async () => {
+    const resolver = createSourceResolver({
+      pageOrigin: "http://localhost:5173",
+      projectRoot: null,
+      fetchText: async (url) =>
+        url === noFileFixture.moduleUrl ? noFileFixture.code : null,
+    });
+    const resolved = await resolver.resolve({
+      name: "Button",
+      isHost: false,
+      stackFrame: {
+        url: noFileFixture.moduleUrl,
+        line: noFileFixture.generated.line,
+        column: noFileFixture.generated.column,
+      },
+    });
+    if (resolved.location === null) throw new Error("expected a location");
+
+    const result = buildEditorUrl(DEFAULT_EDITOR_SETTING, {
+      location: resolved.location,
+      root: null,
+    });
+
+    expect(result).toEqual({
+      url: `vscode://file/${noFileFixture.expected.absoluteFile}:20:9`,
+    });
+  });
+});
+
+describe("scheme helpers", () => {  it("allows editor schemes and blocks script/navigation schemes", () => {
     expect(isAllowedEditorScheme("vscode")).toBe(true);
     expect(isAllowedEditorScheme("cursor")).toBe(true);
     expect(isAllowedEditorScheme("javascript")).toBe(false);

@@ -24,6 +24,7 @@ import {
   RUNTIME_OPEN_EXTERNAL_MESSAGE,
   RUNTIME_STATUS_MESSAGE,
   type OpenExternalRequest,
+  type OpenExternalResponse,
   type RuntimeStatusResponse,
 } from "../lib/runtime";
 import {
@@ -95,10 +96,18 @@ function openViaBackground(url: string): void {
       type: RUNTIME_OPEN_EXTERNAL_MESSAGE,
       url,
     };
-    chrome.runtime.sendMessage(request, () => {
+    chrome.runtime.sendMessage(request, (response?: OpenExternalResponse) => {
       // Reading lastError prevents "Unchecked runtime.lastError" noise when the
       // service worker is asleep or the URL was rejected.
-      void chrome.runtime.lastError;
+      const error = chrome.runtime.lastError;
+      if (error || !response || response.ok !== true) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          "[tab-to-components] could not hand the editor URL to the OS:",
+          error?.message ?? response?.error ?? "no response",
+          url,
+        );
+      }
     });
   } catch {
     // Extension APIs unavailable (tests/embedding): the toast already told the
@@ -164,8 +173,19 @@ async function installInspector(): Promise<(() => void) | null> {
     const root = projectRootFor(settings, origin);
     const built = buildEditorUrl(settings.editor, { location, root });
     if ("error" in built) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        "[tab-to-components] cannot build an editor URL:",
+        built.error,
+        location,
+      );
       return { ok: false, message: built.error };
     }
+    // Always trace the exact URL: when Chrome refuses to hand a protocol to
+    // the OS, this line is the fastest way to tell a path problem from a
+    // protocol/launch problem.
+    // eslint-disable-next-line no-console
+    console.info("[tab-to-components] opening editor URL:", built.url);
     const verdict = limiter.reserve(built.url);
     if (verdict === "duplicate") {
       return { ok: true, message: "Already opening that file in your editor." };
@@ -179,7 +199,9 @@ async function installInspector(): Promise<(() => void) | null> {
     const launched = openViaAnchor(built.url);
     if (!launched) openViaBackground(built.url);
     setTimeout(() => limiter.release(built.url), 750);
-    const file = formatLocation(location);
+    // Show the absolute path when one exists: the toast is also how a
+    // developer verifies that the editor URL carries a real file path.
+    const file = resolveAbsoluteLocation(location, root) ?? formatLocation(location);
     const editor = editorPresetLabel(settings.editor);
     return {
       ok: true,

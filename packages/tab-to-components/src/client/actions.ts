@@ -9,12 +9,33 @@
  */
 
 import type { ClickAction } from "./config";
+import type { MenuIconName } from "./icons";
 import {
   fileNameOf,
   formatMarker,
   resolveFullPath,
   type SourceMarker,
 } from "./marker";
+
+/**
+ * Icon rendered before the primary label in the action picker. Each action
+ * points at what it acts on: the editor, the file, a relative/full path or the
+ * `file:line:column` location.
+ */
+export function sourceActionIcon(action: ClickAction): MenuIconName {
+  switch (action) {
+    case "open":
+      return "open";
+    case "copy-file":
+      return "copy-file";
+    case "copy-path":
+      return "copy-path";
+    case "copy-full-path":
+      return "copy-full-path";
+    case "copy-location":
+      return "copy-location";
+  }
+}
 
 /** Primary label rendered in the action picker. */
 export function sourceActionLabel(action: ClickAction): string {

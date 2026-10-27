@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  alignModulePath,
   createLocation,
   displayFileOf,
   fileNameOf,
@@ -15,6 +16,7 @@ import {
   normalizeAbsolutePath,
   normalizeSlashes,
   parseMarker,
+  projectRootFrom,
   resolveAbsoluteLocation,
   stripRoot,
 } from "../../lib/source/location";
@@ -140,6 +142,63 @@ describe("formatting and path joining", () => {
     expect(stripRoot("D:/proj/src/App.tsx", "d:/PROJ")).toBe("src/App.tsx");
     expect(stripRoot("D:/proj/src/App.tsx", null)).toBeNull();
     expect(stripRoot("D:/other/src/App.tsx", "D:/proj")).toBeNull();
+  });
+});
+
+describe("projectRootFrom", () => {
+  it("is the inverse of stripRoot for Windows and POSIX paths", () => {
+    expect(projectRootFrom("C:/Users/reemo/proj/src/App.tsx", "src/App.tsx")).toBe(
+      "C:/Users/reemo/proj",
+    );
+    expect(
+      projectRootFrom("D:/proj/app/routes/home.tsx", "app/routes/home.tsx"),
+    ).toBe("D:/proj");
+    expect(projectRootFrom("/home/dev/app/src/App.tsx", "src/App.tsx")).toBe(
+      "/home/dev/app",
+    );
+    // Case-insensitive on the shared suffix, like stripRoot.
+    expect(projectRootFrom("C:/Proj/SRC/App.tsx", "src/App.tsx")).toBe("C:/Proj");
+  });
+
+  it("returns null when the paths do not agree", () => {
+    expect(projectRootFrom("D:/proj/src/App.tsx", "src/Other.tsx")).toBeNull();
+    expect(projectRootFrom("D:/proj/src/App.tsx", "../App.tsx")).toBeNull();
+    expect(projectRootFrom("src/App.tsx", "src/App.tsx")).toBeNull();
+    expect(projectRootFrom(null, "src/App.tsx")).toBeNull();
+    expect(projectRootFrom("D:/proj/src/App.tsx", null)).toBeNull();
+    // A bare drive/filesystem root cannot round-trip through joinRoot.
+    expect(projectRootFrom("C:/App.tsx", "App.tsx")).toBeNull();
+  });
+});
+
+describe("alignModulePath", () => {
+  it("recovers the project-relative path and a non-root base prefix", () => {
+    expect(
+      alignModulePath(
+        "/cats/app/routes/home.tsx",
+        "C:/Users/reemo/proj/app/routes/home.tsx",
+      ),
+    ).toEqual({ relativeFile: "app/routes/home.tsx", basePrefix: "/cats/" });
+    expect(
+      alignModulePath("/cats/src/app.tsx", "/home/dev/proj/src/app.tsx"),
+    ).toEqual({ relativeFile: "src/app.tsx", basePrefix: "/cats/" });
+  });
+
+  it("reports a root base when the URL path already matches the file", () => {
+    expect(
+      alignModulePath("/src/App.tsx", "C:/Users/reemo/proj/src/App.tsx"),
+    ).toEqual({ relativeFile: "src/App.tsx", basePrefix: "/" });
+    // Case-insensitive on Windows-style paths.
+    expect(
+      alignModulePath("/SRC/app.tsx", "C:/Users/reemo/proj/src/App.tsx"),
+    ).toEqual({ relativeFile: "SRC/app.tsx", basePrefix: "/" });
+  });
+
+  it("returns null when nothing lines up or inputs are unusable", () => {
+    expect(alignModulePath("/cats/src/App.tsx", "D:/other/Notes.md")).toBeNull();
+    expect(alignModulePath("/src/App.tsx", null)).toBeNull();
+    expect(alignModulePath("src/App.tsx", "C:/proj/src/App.tsx")).toBeNull();
+    expect(alignModulePath("/src/App.tsx", "src/App.tsx")).toBeNull();
   });
 });
 
