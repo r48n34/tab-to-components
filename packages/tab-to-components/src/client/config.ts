@@ -7,6 +7,8 @@
  * straight to `install()`.
  */
 
+import type { MenuIconName } from "./icons";
+
 /** Modifier keys the overlay understands. */
 export type ModifierKey = "alt" | "ctrl" | "meta" | "shift";
 
@@ -43,6 +45,10 @@ export const IDE_LABELS: Record<EditorIde, string> = {
  * - `copy-path`: copy the project-relative path (`app/components/MyBox.tsx`).
  * - `copy-full-path`: copy the absolute path (`D:/proj/app/components/MyBox.tsx`).
  * - `copy-location`: copy `path:line:column`.
+ * - `copy-ai-context`: copy a markdown context block for an AI coding tool.
+ * - `copy-mention`: copy an agent-friendly `@path:line:column` mention.
+ * - `copy-markdown`: copy an inline markdown reference.
+ * - `copy-chain`: copy the component chain (`App > Card > Button`).
  */
 export type ClickAction =
   | "open"
@@ -53,7 +59,11 @@ export type ClickAction =
   | "copy-file"
   | "copy-path"
   | "copy-full-path"
-  | "copy-location";
+  | "copy-location"
+  | "copy-ai-context"
+  | "copy-mention"
+  | "copy-markdown"
+  | "copy-chain";
 
 /** Actions shown by default: open the editor, copy the file name or full path. */
 export const DEFAULT_CLICK_ACTIONS: readonly ClickAction[] = [
@@ -61,6 +71,42 @@ export const DEFAULT_CLICK_ACTIONS: readonly ClickAction[] = [
   "copy-file",
   "copy-full-path",
 ];
+
+/** Icon a team-defined custom action can use. */
+export type CustomActionIcon = Extract<
+  MenuIconName,
+  | "copy-file"
+  | "copy-path"
+  | "copy-full-path"
+  | "copy-location"
+  | "component"
+  | "sparkles"
+  | "at"
+  | "markdown"
+>;
+
+/** Every custom-action icon, used to validate the injected config. */
+export const CUSTOM_ACTION_ICONS: readonly CustomActionIcon[] = [
+  "copy-file",
+  "copy-path",
+  "copy-full-path",
+  "copy-location",
+  "component",
+  "sparkles",
+  "at",
+  "markdown",
+];
+
+/**
+ * A team-defined copy row from the plugin's `customActions` option. The
+ * template is expanded in the browser and never reaches the dev server.
+ */
+export interface CustomAction {
+  id: string;
+  label: string;
+  copy: string;
+  icon?: CustomActionIcon;
+}
 
 /** Shape of `globalThis.__TTC_CONFIG__`, injected by the plugin. */
 export interface ClientConfig {
@@ -80,6 +126,11 @@ export interface ClientConfig {
    * `["open", "copy-file", "copy-full-path"]`.
    */
   clickActions: ClickAction[];
+  /**
+   * Extra copy rows appended after `clickActions`. Omitted from the injected
+   * config when empty. Default `[]`.
+   */
+  customActions?: CustomAction[];
   /** Whether modifier + right click shows the component chain menu. Default true. */
   menu: boolean;
   /** Color theme of the overlay. Default "dark". */
@@ -96,6 +147,7 @@ export const DEFAULT_CONFIG: ClientConfig = {
   keyboard: ["alt"],
   open: "component",
   clickActions: [...DEFAULT_CLICK_ACTIONS],
+  customActions: [],
   menu: true,
   theme: "dark",
   editorEndpoint: "__open-in-editor",
@@ -114,7 +166,52 @@ const CLICK_ACTIONS: readonly ClickAction[] = [
   "copy-path",
   "copy-full-path",
   "copy-location",
+  "copy-ai-context",
+  "copy-mention",
+  "copy-markdown",
+  "copy-chain",
 ];
+
+/** Keep in sync with the plugin's custom action bounds. */
+const MAX_CUSTOM_ACTIONS = 12;
+const MAX_CUSTOM_ACTION_ID = 40;
+const MAX_CUSTOM_ACTION_LABEL = 80;
+const MAX_CUSTOM_ACTION_COPY = 600;
+const CUSTOM_ACTION_ID_RE = /^[a-z0-9][a-z0-9_-]*$/i;
+
+function isCustomActionIcon(value: unknown): value is CustomActionIcon {
+  return (
+    typeof value === "string" &&
+    (CUSTOM_ACTION_ICONS as readonly string[]).includes(value)
+  );
+}
+
+/**
+ * Validate the custom actions injected in the config (or passed to
+ * `install()`). The config crosses an injection boundary and can be tampered
+ * with, so this repeats the plugin's bounds instead of trusting them.
+ */
+function normalizeCustomActions(actions: unknown): CustomAction[] {
+  if (!Array.isArray(actions)) return [];
+  const seen = new Set<string>();
+  const normalized: CustomAction[] = [];
+  for (const raw of actions) {
+    if (typeof raw !== "object" || raw === null) continue;
+    const record = raw as Record<string, unknown>;
+    const id = typeof record.id === "string" ? record.id.trim() : "";
+    const label = typeof record.label === "string" ? record.label.trim() : "";
+    const copy = typeof record.copy === "string" ? record.copy : "";
+    if (id === "" || id.length > MAX_CUSTOM_ACTION_ID) continue;
+    if (!CUSTOM_ACTION_ID_RE.test(id) || seen.has(id)) continue;
+    if (label === "" || label.length > MAX_CUSTOM_ACTION_LABEL) continue;
+    if (copy.trim() === "" || copy.length > MAX_CUSTOM_ACTION_COPY) continue;
+    seen.add(id);
+    const icon = isCustomActionIcon(record.icon) ? record.icon : undefined;
+    normalized.push(icon === undefined ? { id, label, copy } : { id, label, copy, icon });
+    if (normalized.length >= MAX_CUSTOM_ACTIONS) break;
+  }
+  return normalized;
+}
 
 function normalizeRoot(root: string): string {
   const slashed = root.replace(/\\/g, "/");
@@ -192,6 +289,7 @@ export function resolveConfig(input?: Partial<ClientConfig> | null): ClientConfi
     keyboard: normalizeKeyboard(source.keyboard),
     open: normalizeOpen(source.open),
     clickActions: normalizeClickActions(source.clickActions),
+    customActions: normalizeCustomActions(source.customActions),
     menu: source.menu === undefined ? DEFAULT_CONFIG.menu : Boolean(source.menu),
     theme: normalizeTheme(source.theme),
     editorEndpoint: normalizeEndpoint(source.editorEndpoint),

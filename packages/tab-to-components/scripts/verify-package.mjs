@@ -175,13 +175,17 @@ check("publishes no source maps", publishedMaps.length === 0, publishedMaps.join
 // 0.4 source actions and the theme palette brought it to ~116 KiB; 0.4.1 added
 // the hardened launcher and endpoint checks (~135 KiB); 0.5.0 adds the overlay
 // icons and the expanded docs (~150 KiB); the per-IDE click actions, their icons
-// and the matching docs take it to ~164 KiB. The budget tracks the current
-// release line rather than the original 112 KiB.
-check("published payload is small", publishedBytes <= 168 * 1024, `${(publishedBytes / 1024).toFixed(1)} KiB`);
+// and the matching docs took it to ~164 KiB; the extensible custom actions, the
+// AI/share presets and their documentation take it to ~180 KiB, and the Vite 5
+// support documentation to ~185 KiB. The budget tracks the current release line
+// rather than the original 112 KiB.
+check("published payload is small", publishedBytes <= 192 * 1024, `${(publishedBytes / 1024).toFixed(1)} KiB`);
 // The browser runtime is minified by scripts/build.mjs; keep it that way so the
 // tarball does not silently double in size again. The 0.5.0 icons took it to
-// ~24.1 KiB; the per-IDE click actions and their four icons take it to ~25.3 KiB.
-check("client runtime is minified", clientBytes > 0 && clientBytes <= 26 * 1024, `${clientBytes} bytes`);
+// ~24.1 KiB; the per-IDE click actions and their four icons took it to ~25.3 KiB;
+// the AI/share presets, the custom-template engine and three more icons take it
+// to ~29.0 KiB.
+check("client runtime is minified", clientBytes > 0 && clientBytes <= 30 * 1024, `${clientBytes} bytes`);
 for (const leaked of ["src/index.ts", "test/plugin.test.ts", "scripts/build.mjs"]) {
   check(`does not publish ${leaked}`, !publishedFiles.includes(leaked));
 }
@@ -242,6 +246,13 @@ check("plugin name", plugin.name === "tab-to-components", plugin.name);
 check("plugin is serve-only", plugin.apply === "serve", plugin.apply);
 check("plugin runs pre", plugin.enforce === "pre", plugin.enforce);
 check("exports types helper constants", packed.MARKER_ATTR === "data-ttc" && packed.NAME_ATTR === "data-ttc-name");
+check(
+  "exports the custom-action constants",
+  Array.isArray(packed.CUSTOM_ACTION_ICONS) &&
+    packed.CUSTOM_ACTION_ICONS.includes("sparkles") &&
+    JSON.stringify(packed.CUSTOM_ACTION_PLACEHOLDERS) ===
+      JSON.stringify(["file", "absPath", "name", "line", "column", "location", "chain"]),
+);
 
 // ---------------------------------------------------------------------------
 // 5. Type-check a consumer file against the packed declarations
@@ -251,16 +262,32 @@ const consumerTypeFile = path.join(consumerDir, "typecheck.ts");
 fs.writeFileSync(
   consumerTypeFile,
   [
-    'import { tabToComponents, type TabToComponentsOptions } from "tab-to-components";',
+    "import {",
+    "  CUSTOM_ACTION_ICONS,",
+    "  CUSTOM_ACTION_PLACEHOLDERS,",
+    "  tabToComponents,",
+    "  type TabToComponentsClickAction,",
+    "  type TabToComponentsCustomAction,",
+    "  type TabToComponentsOptions,",
+    '} from "tab-to-components";',
+    "const customActions: readonly TabToComponentsCustomAction[] = [",
+    '  { id: "issue", label: "Copy for issue", copy: "{name} — {location}\\n{chain}", icon: "sparkles" },',
+    '  { id: "plain", label: "Copy path", copy: "{absPath}" },',
+    "];",
+    'const clickActions: TabToComponentsClickAction[] = ["open", "open-cursor", "copy-ai-context", "copy-markdown"];',
     "const options: TabToComponentsOptions = {",
     '  keyboard: ["alt", "meta"],',
     '  open: "element",',
     "  menu: false,",
     "  ssr: false,",
     "  include: [/^app\\//],",
+    "  clickActions,",
+    "  customActions,",
     "};",
     "const plugin = tabToComponents(options);",
     "export const pluginName: string = plugin.name;",
+    "export const icons: readonly string[] = [...CUSTOM_ACTION_ICONS];",
+    "export const placeholders: readonly string[] = [...CUSTOM_ACTION_PLACEHOLDERS];",
     "",
   ].join("\n"),
 );
@@ -294,11 +321,20 @@ check("consumer type-checks against the packed .d.ts", typeDiagnostics.length ==
 console.log("\n[6/7] packed package in a Vite dev server");
 const { createServer } = await import("vite");
 const reactPlugin = (await import("@vitejs/plugin-react")).default;
+const CUSTOM_ACTION_PROBE = {
+  id: "probe-issue",
+  label: "Copy for issue",
+  copy: "{name} — {location} ({chain})",
+  icon: "sparkles",
+};
 const server = await createServer({
   root: playgroundDir,
   configFile: false,
   logLevel: "error",
-  plugins: [reactPlugin(), packed.tabToComponents()],
+  plugins: [
+    reactPlugin(),
+    packed.tabToComponents({ customActions: [CUSTOM_ACTION_PROBE] }),
+  ],
   server: { port: 0, strictPort: false, host: "127.0.0.1" },
 });
 try {
@@ -319,6 +355,13 @@ try {
     "client config points at the project root",
     clientCode.includes(encodeURI(playgroundDir.replace(/\\/g, "/")).slice(0, 12)) ||
       clientCode.includes(playgroundDir.replace(/\\/g, "/")),
+  );
+  check(
+    "client config carries the configured custom actions",
+    clientCode.includes('"customActions"') &&
+      clientCode.includes('"id":"probe-issue"') &&
+      clientCode.includes("{chain}"),
+    clientCode.includes('"customActions"') ? "injected" : "missing",
   );
 } finally {
   await server.close();

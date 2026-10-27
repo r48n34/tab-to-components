@@ -21,7 +21,10 @@ export type MenuIconName =
   | "copy-path"
   | "copy-full-path"
   | "copy-location"
-  | "component";
+  | "component"
+  | "sparkles"
+  | "at"
+  | "markdown";
 
 /**
  * `d` attribute values per icon, drawn on a 16×16 grid with 1.5px strokes.
@@ -66,6 +69,24 @@ export const MENU_ICON_PATHS: Record<MenuIconName, readonly string[]> = {
   ],
   // A stacked box: a React component in the chain picker.
   component: ["M8 1.5 14 5v6l-6 3.5L2 11V5z", "M2 5l6 3.5L14 5", "M8 8.5V14.5"],
+  // A four-point sparkle: copy context for an AI coding tool.
+  sparkles: [
+    "M7 2.2c.5 2.4 1.9 3.8 4.3 4.3-2.4.5-3.8 1.9-4.3 4.3-.5-2.4-1.9-3.8-4.3-4.3 2.4-.5 3.8-1.9 4.3-4.3z",
+    "M12.3 10.4c.2 1 .7 1.5 1.7 1.7-1 .2-1.5.7-1.7 1.7-.2-1-.7-1.5-1.7-1.7 1-.2 1.5-.7 1.7-1.7z",
+  ],
+  // An at-sign: an agent-friendly @mention.
+  at: [
+    "M12.5 8a4.5 4.5 0 1 1-1.4-3.3",
+    "M10.5 5.2v3.6a1.9 1.9 0 0 0 3.8 0V8",
+    "M8 5.6a2.4 2.4 0 1 0 0 4.8 2.4 2.4 0 0 0 0-4.8z",
+  ],
+  // A markdown badge with a down arrow: copy a markdown reference.
+  markdown: [
+    "M2.5 4.5h11a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1v-5a1 1 0 0 1 1-1z",
+    "M4.7 9.5V6.5l1.8 2 1.8-2v3",
+    "M12 6.5v3",
+    "M10.9 8.4 12 9.5l1.1-1.1",
+  ],
 };
 
 /**

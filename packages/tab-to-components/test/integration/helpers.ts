@@ -10,6 +10,8 @@ export const repoRoot = path.resolve(packageDir, "../..");
 
 export type PlaygroundName =
   | "vite-react"
+  | "vite-react-vite5"
+  | "vite-react-vite5-react18"
   | "vite-react-vite7"
   | "rr7"
   | "rr7-vite7"

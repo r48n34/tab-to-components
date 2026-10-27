@@ -18,6 +18,9 @@ const ICONS: MenuIconName[] = [
   "copy-full-path",
   "copy-location",
   "component",
+  "sparkles",
+  "at",
+  "markdown",
 ];
 
 describe("menu icons", () => {

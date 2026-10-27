@@ -23,6 +23,12 @@ interface ClientPayload {
   keyboard: string[];
   open: string;
   clickActions: string[];
+  customActions?: Array<{
+    id: string;
+    label: string;
+    copy: string;
+    icon?: string;
+  }>;
   menu: boolean;
   theme: string;
   editorEndpoint: string;
@@ -214,6 +220,86 @@ describe("clickActions option", () => {
     expect(
       clientPayload(createPlugin({ clickActions: [] })).clickActions,
     ).toEqual(["open", "copy-file", "copy-full-path"]);
+  });
+});
+
+describe("customActions option", () => {
+  it("is omitted from the injected config when empty", () => {
+    expect(clientPayload(createPlugin()).customActions).toBeUndefined();
+    expect(clientPayload(createPlugin({ customActions: [] })).customActions).toBeUndefined();
+  });
+
+  it("passes valid custom actions through in order", () => {
+    expect(
+      clientPayload(
+        createPlugin({
+          customActions: [
+            {
+              id: "review",
+              label: "Copy review prompt",
+              copy: "Review {name} at {location}",
+              icon: "sparkles",
+            },
+            { id: "issue", label: "Copy issue", copy: "{chain} ({file})" },
+          ],
+        }),
+      ).customActions,
+    ).toEqual([
+      {
+        id: "review",
+        label: "Copy review prompt",
+        copy: "Review {name} at {location}",
+        icon: "sparkles",
+      },
+      { id: "issue", label: "Copy issue", copy: "{chain} ({file})" },
+    ]);
+  });
+
+  it("drops malformed custom actions and dedupes ids", () => {
+    expect(
+      clientPayload(
+        createPlugin({
+          customActions: [
+            { id: "ok", label: "Fine", copy: "{file}" },
+            { id: "ok", label: "Duplicate", copy: "{file}" },
+            { id: "bad id", label: "Bad id", copy: "{file}" },
+            { id: "no-label", label: "   ", copy: "{file}" },
+            { id: "no-copy", label: "No copy", copy: "   " },
+            { id: "too-long", label: "L".repeat(81), copy: "{file}" },
+            { id: "icon", label: "Icon", copy: "{file}", icon: "rocket" as never },
+            null as never,
+          ],
+        }),
+      ).customActions,
+    ).toEqual([
+      { id: "ok", label: "Fine", copy: "{file}" },
+      { id: "icon", label: "Icon", copy: "{file}" },
+    ]);
+  });
+
+  it("keeps a 600-character template and drops a 601-character one", () => {
+    const payload = clientPayload(
+      createPlugin({
+        customActions: [
+          { id: "max", label: "Max", copy: "x".repeat(600) },
+          { id: "over", label: "Over", copy: "x".repeat(601) },
+        ],
+      }),
+    );
+    expect(payload.customActions).toHaveLength(1);
+    expect(payload.customActions?.[0]?.id).toBe("max");
+    expect(payload.customActions?.[0]?.copy).toHaveLength(600);
+  });
+
+  it("caps the number of custom actions at twelve", () => {
+    const actions = Array.from({ length: 20 }, (_, index) => ({
+      id: `action-${index}`,
+      label: `Action ${index}`,
+      copy: "{file}",
+    }));
+    const payload = clientPayload(createPlugin({ customActions: actions }));
+    expect(payload.customActions).toHaveLength(12);
+    expect(payload.customActions?.[11]?.id).toBe("action-11");
   });
 });
 

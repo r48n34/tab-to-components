@@ -1593,7 +1593,7 @@ function renderMarkdown(report) {
     '- "Works" means the pinned combination passed the version/isolation checks, dev-server marker + overlay injection checks, any applicable SSR-markup check, the real-React fiber/Alt+click check, and the production-build cleanliness check. The browser column is only filled when the run includes `--browser`.',
   );
   lines.push(
-    "- Vite 7 is covered separately by `pnpm test:matrix` (React 19 only); this table pins Vite 8 for the Vite/React Router/TanStack/Astro/Vike rows and Vite 6 for Remix v2, matching each framework's current supported range.",
+    "- Vite 5 (React 18 and React 19) and Vite 7 (React 19) are covered separately by `pnpm test:matrix`; this table pins Vite 8 for the Vite/React Router/TanStack/Astro/Vike rows and Vite 6 for Remix v2, matching each framework's current supported range.",
   );
   if (report.options?.browser) {
     const testedCells = report.cells.filter((cell) => cell.status === "tested");

@@ -19,7 +19,7 @@
 //      (`GET <base>__ttc/open-in-editor?file=<abs page file>:<line>:<column>`,
 //      the plugin's endpoint for its default VS Code editor) for the JSX
 //      *usage site* of `<Button>` in the page module (`app/routes/home.tsx` for
-//      rr7/rr8, `src/App.tsx` for vite-react),
+//      rr7/rr8, `src/App.tsx` for the plain Vite apps),
 //   7. asserts the plugin actually launched the editor with that location by
 //      putting a fake `code` command first on PATH (no VS Code needed), and
 //   8. asserts the app's own click handler did NOT run (counter text unchanged).
@@ -61,6 +61,7 @@ const PLAYGROUNDS = [
     dir: path.join(REPO_ROOT, "playground", "rr8"),
     pageFile: "app/routes/home.tsx",
     componentFile: "app/components/Button.tsx",
+    ssr: true,
   },
   {
     name: "rr7",
@@ -68,6 +69,7 @@ const PLAYGROUNDS = [
     dir: path.join(REPO_ROOT, "playground", "rr7"),
     pageFile: "app/routes/home.tsx",
     componentFile: "app/components/Button.tsx",
+    ssr: true,
   },
   {
     name: "vite-react",
@@ -75,6 +77,23 @@ const PLAYGROUNDS = [
     dir: path.join(REPO_ROOT, "playground", "vite-react"),
     pageFile: "src/App.tsx",
     componentFile: "src/components/Button.tsx",
+    ssr: false,
+  },
+  {
+    name: "vite-react-vite5",
+    description: "plain Vite 5 + React 19 (client only)",
+    dir: path.join(REPO_ROOT, "playground", "vite-react-vite5"),
+    pageFile: "src/App.tsx",
+    componentFile: "src/components/Button.tsx",
+    ssr: false,
+  },
+  {
+    name: "vite-react-vite5-react18",
+    description: "plain Vite 5 + React 18 (client only)",
+    dir: path.join(REPO_ROOT, "playground", "vite-react-vite5-react18"),
+    pageFile: "src/App.tsx",
+    componentFile: "src/components/Button.tsx",
+    ssr: false,
   },
   {
     name: "vite-react-vite7",
@@ -82,6 +101,7 @@ const PLAYGROUNDS = [
     dir: path.join(REPO_ROOT, "playground", "vite-react-vite7"),
     pageFile: "src/App.tsx",
     componentFile: "src/components/Button.tsx",
+    ssr: false,
   },
   {
     name: "rr7-vite7",
@@ -89,6 +109,7 @@ const PLAYGROUNDS = [
     dir: path.join(REPO_ROOT, "playground", "rr7-vite7"),
     pageFile: "app/routes/home.tsx",
     componentFile: "app/components/Button.tsx",
+    ssr: true,
   },
 ];
 
@@ -213,7 +234,11 @@ async function startDevServer(playgroundDir) {
     path.join(playgroundDir, "package.json"),
   );
   const viteEntry = requireFromPlayground.resolve("vite");
-  const vite = await import(pathToFileURL(viteEntry).href);
+  const loaded = await import(pathToFileURL(viteEntry).href);
+  // Vite 5 resolves its `require` condition to the CJS entry, so the dynamic
+  // import namespace carries the real module on `default`. Vite 7/8 are ESM and
+  // expose the API on the namespace itself.
+  const vite = loaded.default ?? loaded;
   if (typeof vite.createServer !== "function") {
     throw new HarnessError(
       `resolved vite from ${toPosix(viteEntry)} but it has no createServer() export.`,
@@ -240,12 +265,34 @@ async function startDevServer(playgroundDir) {
   };
 }
 
-async function closeDevServer(server) {
+/**
+ * Close a playground dev server. Vite 5's `server.close()` can stay pending
+ * after the dev dependency optimizer's esbuild build is canceled during
+ * shutdown (esbuild prints "The build was canceled"), and Vite 5/7 keep their
+ * esbuild service alive, which can delay the process exit. Bound the close and
+ * stop the playground's esbuild so the suite can move on to the next app.
+ */
+async function closeDevServer(server, playground) {
   if (!server) return;
   try {
-    await server.close();
+    await Promise.race([
+      server.close().catch((error) => {
+        log(`  ! dev server close failed: ${error.message}`);
+      }),
+      new Promise((resolve) => setTimeout(resolve, 5_000)),
+    ]);
   } catch (error) {
     log(`  ! dev server close failed: ${error.message}`);
+  }
+  if (!playground) return;
+  try {
+    const requireFromPlayground = createRequire(
+      path.join(playground.dir, "package.json"),
+    );
+    const esbuild = requireFromPlayground("esbuild");
+    if (esbuild && typeof esbuild.stop === "function") esbuild.stop();
+  } catch {
+    // Vite 8 (rolldown) playgrounds have no esbuild dependency.
   }
 }
 
@@ -1242,7 +1289,7 @@ export async function runPlaygroundInBrowser(playground) {
     if (client) await releaseAlt(client);
     if (client) client.close();
     await stopChrome(launchedChrome);
-    await closeDevServer(server);
+    await closeDevServer(server, playground);
   }
 
   const elapsedMs = Date.now() - startedAt;
@@ -1294,7 +1341,9 @@ async function runPlaygroundServerOnly(playground) {
   const expected = computeExpectedLocation(pageFileAbs);
   const pageModulePath = "/" + toPosix(playground.pageFile);
   const componentModulePath = "/" + toPosix(playground.componentFile);
-  const isSsr = playground.name !== "vite-react";
+  // The playground list declares its rendering mode explicitly, so adding a new
+  // Vite major cannot silently flip the server-only SSR/client checks.
+  const isSsr = playground.ssr !== false;
   let server = null;
   const notes = [];
 
@@ -1403,7 +1452,7 @@ async function runPlaygroundServerOnly(playground) {
       elapsedMs: Date.now() - startedAt,
     };
   } finally {
-    await closeDevServer(server);
+    await closeDevServer(server, playground);
   }
 }
 

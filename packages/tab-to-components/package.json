@@ -1,7 +1,7 @@
 {
   "name": "tab-to-components",
   "version": "0.5.0",
-  "description": "Alt+click a React element in your dev server to open its JSX source in your editor or copy the file name to the clipboard. Dev-only Vite plugin with first-class React Router v6/v7/v8, TanStack Start and Remix v2 support, React 18 and 19, Vite 6-8. Choose your IDE inline: VS Code, Cursor, Trae, JetBrains, or any custom command.",
+  "description": "Alt+click a React element in your dev server to open its JSX source in your editor or copy its path, component chain or AI-ready context. Dev-only Vite plugin with first-class React Router v6/v7/v8, TanStack Start and Remix v2 support, React 18 and 19, Vite 5-8. Choose your IDE inline: VS Code, Cursor, Trae, JetBrains, or any custom command.",
   "type": "module",
   "license": "MIT",
   "author": "reemo (https://github.com/r48n34)",
@@ -55,6 +55,9 @@
     "open-in-ide",
     "clipboard",
     "copy-file-name",
+    "copy-for-ai",
+    "ai-context",
+    "component-chain",
     "custom-editor",
     "cursor",
     "trae",
@@ -76,7 +79,7 @@
     "prepublishOnly": "node scripts/prepublish-guard.mjs && node scripts/build.mjs"
   },
   "peerDependencies": {
-    "vite": "^6.0.0 || ^7.0.0 || ^8.0.0"
+    "vite": "^5.0.0 || ^6.0.0 || ^7.0.0 || ^8.0.0"
   },
   "dependencies": {
     "@babel/parser": "^7.29.11",

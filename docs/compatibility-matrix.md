@@ -2,7 +2,14 @@
 
 Rendered from the recorded JSON report of a real `node scripts/compat-matrix.mjs` run on 2026-10-25.
 
-Environment: Node v24.21.0, pnpm 11.28.5, win32 x64, package `tab-to-components@0.4.1`.
+The run was recorded on the `0.4.1` release tree, before the `0.5.0` version bump, so the environment line
+keeps the version the run actually reported. It is the **`0.5.0` ship baseline**: the report was not re-run
+for the version bump, and the only compatibility-matrix change made after it was recorded is the additive
+Vite 5 peer range (`vite`: `^5.0.0 || ^6.0.0 || ^7.0.0 || ^8.0.0`). Vite 5 (React 18 and 19) and Vite 7
+(React 19) coverage is exercised by `pnpm test:matrix`, not by this table (see Notes).
+
+Environment: Node v24.21.0, pnpm 11.28.5, win32 x64, package `tab-to-components@0.4.1` (the version the
+recorded run reported; the `0.5.0` bump landed after it).
 
 Run provenance: `node scripts/compat-matrix.mjs` with the version/dev-server/runtime/build tiers only (no `--browser`). The headless-Chrome tier cannot launch in this environment, so every Browser cell is ⏭ skipped — a skipped check is not a pass. Result: 20 cells (10 frameworks × 2 React majors) — 13 tested (12 works, 1 works-not-verified), 3 upstream-unsupported, 4 not applicable, 0 failing.
 
@@ -62,7 +69,7 @@ Legend: ✅ works (all applicable checks pass) · ⚠️ upstream-supported but 
 - **The browser tier was not run for this report**: `node scripts/compat-matrix.mjs` ran without `--browser` because headless Chrome cannot launch in this sandbox (crashpad/mojo named-pipe access is denied). Every Browser cell above is ⏭ skipped, never ✅; regenerate with `pnpm test:compat:full` on a machine with Chrome to fill the column.
 - **Remix v2's dev/build/SSR checks are environment-skipped**: Vite 6 transforms TypeScript with esbuild, and this sandbox blocks the esbuild child process (`spawn EPERM`). Its versions and shared runtime check pass, so the row is ⚠️ not verified here rather than failing; this is a sandbox limitation, not a Remix compatibility finding.
 - "Works" means the pinned combination passed the version/isolation checks, dev-server marker + overlay injection checks, any applicable SSR-markup check, the real-React fiber/Alt+click check, and the production-build cleanliness check. The browser column is only filled when the run includes `--browser`.
-- Vite 7 is covered separately by `pnpm test:matrix` (React 19 only); this table pins Vite 8 for the Vite / React Router / TanStack Start / Astro / Vike rows and Vite 6 for Remix v2, matching each framework's current supported range.
+- Vite 5 (React 18 and React 19) and Vite 7 (React 19) are covered separately by `pnpm test:matrix`; this table pins Vite 8 for the Vite / React Router / TanStack Start / Astro / Vike rows and Vite 6 for Remix v2, matching each framework's current supported range.
 
 ## Reproduce
 

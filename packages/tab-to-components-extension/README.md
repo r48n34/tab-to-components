@@ -178,6 +178,7 @@ world so it can use `chrome.storage`, the clipboard and `chrome.runtime`.
 | App changes | none | add plugin to Vite config |
 | Location source | React runtime metadata (React 18) / dev source maps (React 19) | `data-ttc` attributes injected at transform time |
 | Open in IDE | IDE URL schemes + Chrome's protocol prompt | dev server launches any editor command |
+| Click actions | five built-in path/copy rows | the same five rows plus per-IDE actions, AI/share presets (`copy-ai-context`, `copy-mention`, `copy-markdown`, `copy-chain`) and team-defined `customActions` templates |
 | Supported frameworks | any React dev server (Vite verified) | Vite-based frameworks, including SSR |
 | SSR-safe markers | n/a | yes (`data-ttc` identical server/client) |
 | Requires dev source maps | React 19 only | no |

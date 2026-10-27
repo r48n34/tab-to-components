@@ -18,6 +18,8 @@ export {
   type IdeId,
 } from "./editor.js";
 export {
+  CUSTOM_ACTION_ICONS,
+  CUSTOM_ACTION_PLACEHOLDERS,
   DEFAULT_CLICK_ACTIONS,
   MARKER_ATTR,
   NAME_ATTR,
@@ -27,7 +29,10 @@ export {
   type EditorOption,
   type EditorTarget,
   type InspectorKey,
+  type TabToComponentsActionIcon,
   type TabToComponentsClickAction,
+  type TabToComponentsCustomAction,
+  type TabToComponentsCustomActionPlaceholder,
   type TabToComponentsOpenMode,
   type TabToComponentsOptions,
   type TabToComponentsTheme,

@@ -2,12 +2,21 @@ import { describe, expect, it } from "vitest";
 
 import {
   IDE_LABELS,
+  MAX_ACTION_TEXT,
+  aiContextText,
+  customActionCopy,
+  customActionDetail,
+  customActionIcon,
+  markdownText,
   sourceActionCopy,
   sourceActionDetail,
   sourceActionIde,
   sourceActionIcon,
   sourceActionLabel,
+  type ActionContext,
+  type ChainEntry,
   type ClickAction,
+  type CustomAction,
   type EditorIde,
   type SourceMarker,
 } from "../../src/client/index";
@@ -17,6 +26,22 @@ const MARKER: SourceMarker = {
   file: "app/components/MyBox.tsx",
   line: 12,
   column: 5,
+};
+const HOST: ChainEntry = {
+  name: "button",
+  isHost: true,
+  marker: { file: "app/components/MyBox.tsx", line: 8, column: 3 },
+};
+const ENTRY: ChainEntry = { name: "MyBox", isHost: false, marker: MARKER };
+const APP: ChainEntry = {
+  name: "App",
+  isHost: false,
+  marker: { file: "app/root.tsx", line: 4, column: 5 },
+};
+const CONTEXT: ActionContext = {
+  entry: ENTRY,
+  chain: [HOST, ENTRY, APP],
+  root: ROOT,
 };
 
 const ACTIONS: ClickAction[] = [
@@ -29,6 +54,10 @@ const ACTIONS: ClickAction[] = [
   "copy-path",
   "copy-full-path",
   "copy-location",
+  "copy-ai-context",
+  "copy-mention",
+  "copy-markdown",
+  "copy-chain",
 ];
 
 /** The actions that ask the dev server to launch an editor. */
@@ -52,12 +81,16 @@ describe("source action labels", () => {
       "Copy relative path",
       "Copy full path",
       "Copy file:line:column",
+      "Copy for AI",
+      "Copy @mention",
+      "Copy as Markdown",
+      "Copy component chain",
     ]);
   });
 
-  it("shows the value each row would copy", () => {
+  it("shows the value each path action would copy", () => {
     expect(
-      ACTIONS.map((action) => sourceActionDetail(action, MARKER, ROOT)),
+      ACTIONS.slice(0, 9).map((action) => sourceActionDetail(action, CONTEXT)),
     ).toEqual([
       "app/components/MyBox.tsx:12:5",
       "app/components/MyBox.tsx:12:5",
@@ -69,6 +102,21 @@ describe("source action labels", () => {
       "D:/proj/app/components/MyBox.tsx",
       "app/components/MyBox.tsx:12:5",
     ]);
+  });
+
+  it("previews the new AI/share rows", () => {
+    expect(sourceActionDetail("copy-mention", CONTEXT)).toBe(
+      "@app/components/MyBox.tsx:12:5",
+    );
+    expect(sourceActionDetail("copy-chain", CONTEXT)).toBe(
+      "App > MyBox > button",
+    );
+    expect(sourceActionDetail("copy-markdown", CONTEXT)).toBe(
+      "`<MyBox />` — `app/components/MyBox.tsx:12:5`",
+    );
+    const aiDetail = sourceActionDetail("copy-ai-context", CONTEXT);
+    expect(aiDetail.startsWith("Target: <MyBox /> — app/components/MyBox.tsx:12:5")).toBe(true);
+    expect(aiDetail).toContain("Component chain (outermost → innermost):");
   });
 });
 
@@ -84,6 +132,10 @@ describe("source action icons", () => {
       "copy-path",
       "copy-full-path",
       "copy-location",
+      "sparkles",
+      "at",
+      "markdown",
+      "component",
     ]);
   });
 
@@ -96,35 +148,163 @@ describe("source action icons", () => {
 describe("sourceActionCopy", () => {
   it("returns null for every action that opens an editor", () => {
     for (const action of OPEN_ACTIONS) {
-      expect(sourceActionCopy(action, MARKER, ROOT), action).toBeNull();
+      expect(sourceActionCopy(action, CONTEXT), action).toBeNull();
     }
   });
 
   it("copies the bare file name", () => {
-    expect(sourceActionCopy("copy-file", MARKER, ROOT)).toEqual({
+    expect(sourceActionCopy("copy-file", CONTEXT)).toEqual({
       text: "MyBox.tsx",
       toast: "Copied file name: MyBox.tsx",
     });
   });
 
   it("copies the relative path", () => {
-    expect(sourceActionCopy("copy-path", MARKER, ROOT)).toEqual({
+    expect(sourceActionCopy("copy-path", CONTEXT)).toEqual({
       text: "app/components/MyBox.tsx",
       toast: "Copied path: app/components/MyBox.tsx",
     });
   });
 
   it("copies the full path using the injected project root", () => {
-    expect(sourceActionCopy("copy-full-path", MARKER, ROOT)).toEqual({
+    expect(sourceActionCopy("copy-full-path", CONTEXT)).toEqual({
       text: "D:/proj/app/components/MyBox.tsx",
       toast: "Copied full path: D:/proj/app/components/MyBox.tsx",
     });
   });
 
   it("copies the full location", () => {
-    expect(sourceActionCopy("copy-location", MARKER, ROOT)).toEqual({
+    expect(sourceActionCopy("copy-location", CONTEXT)).toEqual({
       text: "app/components/MyBox.tsx:12:5",
       toast: "Copied location: app/components/MyBox.tsx:12:5",
+    });
+  });
+
+  it("copies an AI context block for the target and the component chain", () => {
+    const copy = sourceActionCopy("copy-ai-context", CONTEXT);
+    expect(copy).toEqual({
+      text: [
+        "Target: <MyBox /> — app/components/MyBox.tsx:12:5",
+        "Component chain (outermost → innermost):",
+        "1. <App /> — app/root.tsx:4:5",
+        "2. <MyBox /> — app/components/MyBox.tsx:12:5",
+        "3. <button /> — app/components/MyBox.tsx:8:3",
+      ].join("\n"),
+      toast: "Copied AI context: app/components/MyBox.tsx:12:5",
+    });
+  });
+
+  it("copies an @mention", () => {
+    expect(sourceActionCopy("copy-mention", CONTEXT)).toEqual({
+      text: "@app/components/MyBox.tsx:12:5",
+      toast: "Copied @mention: @app/components/MyBox.tsx:12:5",
+    });
+  });
+
+  it("copies an inline markdown reference", () => {
+    expect(sourceActionCopy("copy-markdown", CONTEXT)).toEqual({
+      text: "`<MyBox />` — `app/components/MyBox.tsx:12:5`",
+      toast: "Copied Markdown: app/components/MyBox.tsx:12:5",
+    });
+  });
+
+  it("copies the component chain outermost first", () => {
+    expect(sourceActionCopy("copy-chain", CONTEXT)).toEqual({
+      text: "App > MyBox > button",
+      toast: "Copied component chain: App > MyBox > button",
+    });
+  });
+});
+
+describe("AI context formatting", () => {
+  it("falls back to the acted-on entry when no chain was collected", () => {
+    const context: ActionContext = { entry: ENTRY, chain: [], root: ROOT };
+    expect(aiContextText(context)).toContain("1. <MyBox /> — app/components/MyBox.tsx:12:5");
+  });
+
+  it("formats the markdown reference from the same source location", () => {
+    expect(markdownText(CONTEXT)).toBe(
+      "`<MyBox />` — `app/components/MyBox.tsx:12:5`",
+    );
+  });
+
+  it("falls back to the clicked host element for a host-only chain", () => {
+    const context: ActionContext = { entry: HOST, chain: [HOST], root: ROOT };
+    expect(aiContextText(context)).toBe(
+      [
+        "Target: <button /> — app/components/MyBox.tsx:8:3",
+        "Component chain (outermost → innermost):",
+        "1. <button /> — app/components/MyBox.tsx:8:3",
+      ].join("\n"),
+    );
+    expect(sourceActionCopy("copy-chain", context)?.text).toBe("button");
+  });
+
+  it("caps very long fabricated chains", () => {
+    const chain: ChainEntry[] = Array.from({ length: 200 }, (_, index) => ({
+      name: `Button${"x".repeat(40)}${index}`,
+      isHost: false,
+      marker: MARKER,
+    }));
+    const first = chain[0];
+    if (first === undefined) throw new Error("missing chain entry");
+    const context: ActionContext = {
+      entry: chain[chain.length - 1] ?? first,
+      chain,
+      root: ROOT,
+    };
+    const ai = sourceActionCopy("copy-ai-context", context);
+    expect(ai?.text.length).toBe(MAX_ACTION_TEXT);
+    expect(ai?.text.endsWith("…")).toBe(true);
+    expect(sourceActionCopy("copy-chain", context)?.text.length).toBe(
+      MAX_ACTION_TEXT,
+    );
+  });
+
+  it("sanitizes marker paths in preset clipboard values", () => {
+    const context: ActionContext = {
+      entry: {
+        ...ENTRY,
+        marker: { file: "app/\u202Eevil\u0000.tsx", line: 1, column: 2 },
+      },
+      chain: [],
+      root: ROOT,
+    };
+    expect(sourceActionCopy("copy-mention", context)?.text).toBe(
+      "@app/evil.tsx:1:2",
+    );
+    expect(sourceActionCopy("copy-markdown", context)?.text).toContain(
+      "app/evil.tsx:1:2",
+    );
+    expect(sourceActionCopy("copy-ai-context", context)?.text).toContain(
+      "app/evil.tsx:1:2",
+    );
+  });
+});
+
+describe("custom actions", () => {
+  const REVIEW: CustomAction = {
+    id: "review",
+    label: "Copy review prompt",
+    copy: "Review {name} at {location}.\nChain: {chain}",
+  };
+
+  it("defaults to the location icon and accepts a curated icon", () => {
+    expect(customActionIcon(REVIEW)).toBe("copy-location");
+    expect(customActionIcon({ ...REVIEW, icon: "sparkles" })).toBe("sparkles");
+  });
+
+  it("previews the expanded template on one line", () => {
+    expect(customActionDetail(REVIEW, CONTEXT)).toBe(
+      "Review MyBox at app/components/MyBox.tsx:12:5. Chain: App > MyBox > button",
+    );
+  });
+
+  it("copies the expanded template", () => {
+    expect(customActionCopy(REVIEW, CONTEXT)).toEqual({
+      text: "Review MyBox at app/components/MyBox.tsx:12:5.\nChain: App > MyBox > button",
+      toast:
+        "Copied: Review MyBox at app/components/MyBox.tsx:12:5. Chain: App > MyBox > button",
     });
   });
 });
@@ -141,6 +321,10 @@ describe("sourceActionIde", () => {
       null,
       null,
       null,
+      null,
+      null,
+      null,
+      null,
     ]);
   });
 
@@ -153,6 +337,8 @@ describe("sourceActionIde", () => {
     expect(sourceActionIde("copy-location")).toBeNull();
     expect(sourceActionIde("copy-path")).toBeNull();
     expect(sourceActionIde("copy-full-path")).toBeNull();
+    expect(sourceActionIde("copy-ai-context")).toBeNull();
+    expect(sourceActionIde("copy-chain")).toBeNull();
   });
 
   it("returns null for an action that is not a known click action", () => {

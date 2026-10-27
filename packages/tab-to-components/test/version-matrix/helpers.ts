@@ -10,14 +10,14 @@ export interface ViteModuleLike {
   build: (options: Record<string, unknown>) => Promise<unknown>;
 }
 
-interface NodeRequireLike {
+export interface NodeRequireLike {
   (id: string): unknown;
   resolve: (id: string) => string;
 }
 
 /**
  * Resolve the `vite` copy that a playground actually depends on (this is how a
- * Vite 7 app and a Vite 8 app coexist in one workspace).
+ * Vite 5 app, a Vite 7 app and a Vite 8 app coexist in one workspace).
  */
 export async function loadPlaygroundVite(
   playgroundDir: string,
@@ -26,7 +26,14 @@ export async function loadPlaygroundVite(
     path.join(playgroundDir, "package.json"),
   ) as unknown as NodeRequireLike;
   const entry = nodeRequire.resolve("vite");
-  const vite = (await import(pathToFileURL(entry).href)) as ViteModuleLike;
+  const loaded = (await import(pathToFileURL(entry).href)) as ViteModuleLike & {
+    default?: ViteModuleLike;
+  };
+  // Vite 5's `require` entry resolves to its CJS bundle, so the dynamic import
+  // yields a namespace whose `default` is the real module (the named `version`
+  // and `createServer` re-exports are not available on the namespace). Vite 7
+  // and Vite 8 resolve to ESM, where the namespace is the module itself.
+  const vite = loaded.default ?? loaded;
   return { vite, nodeRequire };
 }
 
@@ -58,8 +65,9 @@ export async function startPlayground(
     base,
     viteVersion: vite.version,
     stop: async () => {
-      // Vite 7 keeps its esbuild service alive, which can delay worker exit.
-      // Closing is best-effort; stopping esbuild releases the process.
+      // Vite 5 and Vite 7 keep their esbuild service alive, which can delay
+      // worker exit. Closing is best-effort; stopping esbuild releases the
+      // process.
       await Promise.race([
         server.close().catch(() => undefined),
         new Promise((resolve) => setTimeout(resolve, 5_000)),
@@ -76,24 +84,38 @@ export async function startPlayground(
 
 /** Is esbuild able to start in this environment? */
 export function canSpawnEsbuild(): boolean {
+  let esbuild:
+    | {
+        transformSync: (
+          code: string,
+          options: Record<string, unknown>,
+        ) => unknown;
+        stop: () => void;
+      }
+    | undefined;
   try {
     const nodeRequire = createRequire(
       path.join(process.cwd(), "package.json"),
     ) as unknown as NodeRequireLike;
-    const esbuild = nodeRequire("esbuild") as {
+    esbuild = nodeRequire("esbuild") as {
       transformSync: (code: string, options: Record<string, unknown>) => unknown;
       stop: () => void;
     };
     esbuild.transformSync("const value: number = 1;", { loader: "ts" });
-    esbuild.stop();
     return true;
   } catch {
     return false;
+  } finally {
+    try {
+      esbuild?.stop();
+    } catch {
+      // esbuild service already gone
+    }
   }
 }
 
 export const ESBUILD_BLOCKED_MESSAGE =
-  "Vite 7 transforms TypeScript with esbuild and esbuild cannot start in this sandbox " +
+  "Vite 5 and Vite 7 transform TypeScript with esbuild and esbuild cannot start in this sandbox " +
   "(child processes are blocked). Run the matrix suite with process access: " +
   "`pnpm test:matrix`. On a normal machine it runs confined.";
 

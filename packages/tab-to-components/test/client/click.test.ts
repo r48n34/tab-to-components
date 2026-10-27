@@ -462,6 +462,141 @@ describe("source action picker", () => {
     expect(actionRows()).toHaveLength(0);
   });
 
+  it("offers the AI and share presets with their own icons", async () => {
+    setConfig({
+      clickActions: [
+        "copy-ai-context",
+        "copy-mention",
+        "copy-markdown",
+        "copy-chain",
+      ],
+    });
+    const button = mountReactButton();
+    install();
+
+    pressAlt();
+    mouseEvent("mousemove", button, { altKey: true });
+    altClick(button);
+
+    const rows = actionRows();
+    expect(rows).toHaveLength(4);
+    expect(rows[0]?.textContent?.startsWith(
+      "Copy for AI  Target: <Button /> — app/routes/home.tsx:19:7",
+    )).toBe(true);
+    expect(rows[1]?.textContent).toBe(
+      "Copy @mention  @app/routes/home.tsx:19:7",
+    );
+    expect(rows[2]?.textContent).toBe(
+      "Copy as Markdown  `<Button />` — `app/routes/home.tsx:19:7`",
+    );
+    expect(rows[3]?.textContent).toBe(
+      "Copy component chain  Button > button",
+    );
+    expect(
+      rows.map((row) =>
+        row.querySelector(".ttc-menu-icon")?.getAttribute("data-icon"),
+      ),
+    ).toEqual(["sparkles", "at", "markdown", "component"]);
+
+    clickRow(rowWithLabel("Copy for AI"));
+    await vi.waitFor(() => {
+      expect(clipboardWrite).toHaveBeenCalledTimes(1);
+    });
+    expect(clipboardWrite.mock.calls[0]?.[0]).toBe(
+      [
+        "Target: <Button /> — app/routes/home.tsx:19:7",
+        "Component chain (outermost → innermost):",
+        "1. <Button /> — app/routes/home.tsx:19:7",
+        "2. <button /> — app/components/Button.tsx:6:10",
+      ].join("\n"),
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+    await vi.waitFor(() => {
+      expect(shadowRoot().textContent ?? "").toContain(
+        "Copied AI context: app/routes/home.tsx:19:7",
+      );
+    });
+  });
+
+  it("appends custom actions after the built-in rows and copies their template", async () => {
+    setConfig({
+      clickActions: ["open", "copy-file"],
+      customActions: [
+        {
+          id: "review",
+          label: "Copy review prompt",
+          copy: "Review {name} at {location} on {chain}",
+          icon: "sparkles",
+        },
+      ],
+    });
+    const button = mountReactButton();
+    install();
+
+    pressAlt();
+    mouseEvent("mousemove", button, { altKey: true });
+    altClick(button);
+
+    const rows = actionRows();
+    expect(rows).toHaveLength(3);
+    expect(rows[0]?.textContent).toContain("Open in IDE");
+    expect(rows[1]?.textContent).toContain("Copy file name");
+    expect(rows[2]?.textContent).toBe(
+      "Copy review prompt  Review Button at app/routes/home.tsx:19:7 on Button > button",
+    );
+    expect(rows[2]?.getAttribute("data-action")).toBe("custom:review");
+    expect(
+      rows[2]?.querySelector('.ttc-menu-icon[data-icon="sparkles"]'),
+    ).not.toBeNull();
+
+    clickRow(rowWithLabel("Copy review prompt"));
+    await vi.waitFor(() => {
+      expect(clipboardWrite).toHaveBeenCalledWith(
+        "Review Button at app/routes/home.tsx:19:7 on Button > button",
+      );
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    await vi.waitFor(() => {
+      expect(shadowRoot().textContent ?? "").toContain(
+        "Copied: Review Button at app/routes/home.tsx:19:7 on Button > button",
+      );
+    });
+  });
+
+  it("ignores custom actions when open is 'menu'", () => {
+    setConfig({
+      open: "menu",
+      customActions: [{ id: "x", label: "Copy X", copy: "{file}" }],
+    });
+    const button = mountReactButton();
+    install();
+
+    pressAlt();
+    altClick(button);
+
+    expect(actionMenu()).toBeNull();
+    const chainRows = shadowRoot().querySelectorAll(
+      '[data-ttc-menu="chain"] .ttc-menu-item',
+    );
+    expect(chainRows.length).toBeGreaterThan(0);
+    expect(shadowRoot().textContent ?? "").not.toContain("Copy X");
+  });
+
+  it("shows the picker when one built-in action is joined by a custom action", () => {
+    setConfig({
+      clickActions: ["open"],
+      customActions: [{ id: "x", label: "Copy X", copy: "{file}" }],
+    });
+    const button = mountReactButton();
+    install();
+
+    pressAlt();
+    altClick(button);
+
+    expect(actionRows()).toHaveLength(2);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("supports keyboard selection in the action picker", async () => {
     setConfig();
     const button = mountReactButton();

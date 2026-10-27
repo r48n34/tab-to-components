@@ -9,11 +9,15 @@
 
 import {
   IDE_LABELS,
+  customActionCopy,
+  customActionDetail,
+  customActionIcon,
   sourceActionCopy,
   sourceActionDetail,
   sourceActionIcon,
   sourceActionIde,
   sourceActionLabel,
+  type SourceActionCopy,
 } from "./actions";
 import {
   getComponentChain,
@@ -21,10 +25,16 @@ import {
   type ChainEntry,
 } from "./chain";
 import { copyText } from "./clipboard";
-import type { ClickAction, ClientConfig, ModifierKey } from "./config";
+import type {
+  ClickAction,
+  ClientConfig,
+  CustomAction,
+  ModifierKey,
+} from "./config";
 import { resolveConfig } from "./config";
 import { openInEditor } from "./editor";
 import { formatMarker, formatNameLabel } from "./marker";
+import type { ActionContext } from "./template";
 import { Overlay, type MenuItem } from "./ui";
 
 /** Subset of a mouse/keyboard event needed to test modifier state. */
@@ -225,9 +235,7 @@ export function install(userConfig?: Partial<ClientConfig> | null): () => void {
     });
   }
 
-  function copyEntryValue(action: ClickAction, entry: ChainEntry): void {
-    const copy = sourceActionCopy(action, entry.marker, config.root);
-    if (copy === null) return;
+  function copyToClipboard(copy: SourceActionCopy): void {
     void copyText(copy.text).then((copied) => {
       if (copied) {
         overlay.showToast(copy.toast);
@@ -240,39 +248,68 @@ export function install(userConfig?: Partial<ClientConfig> | null): () => void {
     });
   }
 
-  function runAction(action: ClickAction, entry: ChainEntry): void {
+  function runAction(action: ClickAction, context: ActionContext): void {
     if (action === "open" || sourceActionIde(action) !== null) {
-      openEntry(entry, action);
+      openEntry(context.entry, action);
       return;
     }
-    copyEntryValue(action, entry);
+    const copy = sourceActionCopy(action, context);
+    if (copy !== null) copyToClipboard(copy);
+  }
+
+  function runCustomAction(action: CustomAction, context: ActionContext): void {
+    copyToClipboard(customActionCopy(action, context));
   }
 
   /** Build the rows of the modifier + left-click action picker. */
-  function actionItems(entry: ChainEntry): MenuItem[] {
-    return config.clickActions.map((action) => ({
+  function actionItems(entry: ChainEntry, chain: ChainEntry[]): MenuItem[] {
+    const context: ActionContext = { entry, chain, root: config.root };
+    const items: MenuItem[] = config.clickActions.map((action) => ({
       label: sourceActionLabel(action),
-      detail: sourceActionDetail(action, entry.marker, config.root),
+      detail: sourceActionDetail(action, context),
       icon: sourceActionIcon(action),
       action,
-      onActivate: () => runAction(action, entry),
+      onActivate: () => runAction(action, context),
     }));
+    // Team-defined copy rows are appended after the built-in actions so the
+    // built-in order stays unchanged for existing configurations.
+    for (const custom of config.customActions ?? []) {
+      items.push({
+        label: custom.label,
+        detail: customActionDetail(custom, context),
+        icon: customActionIcon(custom),
+        action: `custom:${custom.id}`,
+        onActivate: () => runCustomAction(custom, context),
+      });
+    }
+    return items;
   }
 
   /**
    * Configuring a single action keeps the pre-picker behavior: Alt+click runs
-   * it immediately. Two or more actions open the picker at the cursor.
+   * it immediately. Two or more rows (built-in plus custom) open the picker.
    */
-  function chooseAction(entry: ChainEntry, x: number, y: number): void {
+  function chooseAction(
+    entry: ChainEntry,
+    chain: ChainEntry[],
+    x: number,
+    y: number,
+  ): void {
+    const context: ActionContext = { entry, chain, root: config.root };
     const actions = config.clickActions;
-    const first = actions[0];
-    if (first === undefined) return;
-    if (actions.length === 1) {
-      runAction(first, entry);
+    const customActions = config.customActions ?? [];
+    if (actions.length === 1 && customActions.length === 0) {
+      const action = actions[0];
+      if (action !== undefined) runAction(action, context);
+      return;
+    }
+    if (actions.length === 0 && customActions.length === 1) {
+      const custom = customActions[0];
+      if (custom !== undefined) runCustomAction(custom, context);
       return;
     }
     disarm();
-    overlay.showMenu(actionItems(entry), x, y, {
+    overlay.showMenu(actionItems(entry, chain), x, y, {
       kind: "actions",
       ariaLabel: "Source actions",
     });
@@ -386,8 +423,11 @@ export function install(userConfig?: Partial<ClientConfig> | null): () => void {
       showChainMenu(target, event.clientX, event.clientY);
       return;
     }
-    const entry = entryFor(target);
-    if (entry !== null) chooseAction(entry, event.clientX, event.clientY);
+    const chain = getComponentChain(target);
+    const entry = pickPrimaryEntry(chain, config.open);
+    if (entry !== null) {
+      chooseAction(entry, chain, event.clientX, event.clientY);
+    }
   };
 
   const onContextMenu: EventListener = (rawEvent) => {

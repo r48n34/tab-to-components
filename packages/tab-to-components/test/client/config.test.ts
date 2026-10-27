@@ -141,6 +141,111 @@ describe("resolveConfig", () => {
       resolveConfig({ clickActions: "open" as never }).clickActions,
     ).toEqual(["open"]);
   });
+
+  it("passes the AI and share presets through", () => {
+    expect(
+      resolveConfig({
+        clickActions: [
+          "copy-ai-context",
+          "copy-mention",
+          "copy-markdown",
+          "copy-chain",
+        ],
+      }).clickActions,
+    ).toEqual([
+      "copy-ai-context",
+      "copy-mention",
+      "copy-markdown",
+      "copy-chain",
+    ]);
+  });
+});
+
+describe("customActions config", () => {
+  it("defaults to no custom actions", () => {
+    expect(DEFAULT_CONFIG.customActions).toEqual([]);
+    expect(resolveConfig().customActions).toEqual([]);
+  });
+
+  it("keeps valid custom actions in order", () => {
+    expect(
+      resolveConfig({
+        customActions: [
+          {
+            id: "review",
+            label: "Copy review prompt",
+            copy: "Review {name} at {location}",
+            icon: "sparkles",
+          },
+          {
+            id: "issue",
+            label: "Copy issue reference",
+            copy: "{chain} ({file})",
+          },
+        ],
+      }).customActions,
+    ).toEqual([
+      {
+        id: "review",
+        label: "Copy review prompt",
+        copy: "Review {name} at {location}",
+        icon: "sparkles",
+      },
+      {
+        id: "issue",
+        label: "Copy issue reference",
+        copy: "{chain} ({file})",
+      },
+    ]);
+  });
+
+  it("drops malformed entries instead of trusting the injected config", () => {
+    expect(
+      resolveConfig({
+        customActions: [
+          { id: "ok", label: "Fine", copy: "{file}" },
+          { id: "", label: "No id", copy: "{file}" },
+          { id: "bad id", label: "Bad id", copy: "{file}" },
+          { id: "ok", label: "Duplicate", copy: "{file}" },
+          { id: "no-label", label: "   ", copy: "{file}" },
+          { id: "no-copy", label: "No copy", copy: "   " },
+          { id: "too-long", label: "L".repeat(81), copy: "{file}" },
+          null,
+          "nope",
+        ] as never,
+      }).customActions,
+    ).toEqual([{ id: "ok", label: "Fine", copy: "{file}" }]);
+  });
+
+  it("ignores an unknown custom icon but keeps the action", () => {
+    expect(
+      resolveConfig({
+        customActions: [
+          { id: "x", label: "X", copy: "{file}", icon: "rocket" as never },
+        ],
+      }).customActions,
+    ).toEqual([{ id: "x", label: "X", copy: "{file}" }]);
+  });
+
+  it("falls back to an empty list for a non-array value", () => {
+    expect(
+      resolveConfig({ customActions: "nope" as never }).customActions,
+    ).toEqual([]);
+    expect(resolveConfig({ customActions: null as never }).customActions).toEqual(
+      [],
+    );
+  });
+
+  it("caps the number of custom actions", () => {
+    const actions = Array.from({ length: 20 }, (_, index) => ({
+      id: `action-${index}`,
+      label: `Action ${index}`,
+      copy: "{file}",
+    }));
+    expect(resolveConfig({ customActions: actions }).customActions).toHaveLength(
+      12,
+    );
+  });
 });
 
 describe("install without a DOM", () => {

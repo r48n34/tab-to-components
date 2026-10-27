@@ -20,7 +20,10 @@ import {
 } from "./editor.js";
 import { VERSION } from "./version.js";
 import {
+  CUSTOM_ACTION_ICONS,
   DEFAULT_CLICK_ACTIONS,
+  type TabToComponentsActionIcon,
+  type TabToComponentsCustomAction,
   type TabToComponentsOptions,
   type ClientConfig,
   type EditorLauncher,
@@ -49,7 +52,54 @@ const VALID_CLICK_ACTIONS: TabToComponentsClickAction[] = [
   "copy-path",
   "copy-full-path",
   "copy-location",
+  "copy-ai-context",
+  "copy-mention",
+  "copy-markdown",
+  "copy-chain",
 ];
+
+/** Upper bounds for custom action validation (the config reaches the browser). */
+const MAX_CUSTOM_ACTIONS = 12;
+const MAX_CUSTOM_ACTION_ID = 40;
+const MAX_CUSTOM_ACTION_LABEL = 80;
+const MAX_CUSTOM_ACTION_COPY = 600;
+const CUSTOM_ACTION_ID_RE = /^[a-z0-9][a-z0-9_-]*$/i;
+
+function isActionIcon(value: unknown): value is TabToComponentsActionIcon {
+  return (
+    typeof value === "string" &&
+    (CUSTOM_ACTION_ICONS as readonly string[]).includes(value)
+  );
+}
+
+/**
+ * Keep the declarative custom actions that can safely reach the browser: plain
+ * strings only (the client config is JSON-serialized), unique ids, bounded
+ * lengths. Invalid entries are dropped like other invalid option values.
+ */
+function resolveCustomActions(
+  input: readonly TabToComponentsCustomAction[] | undefined,
+): TabToComponentsCustomAction[] {
+  if (!Array.isArray(input)) return [];
+  const seen = new Set<string>();
+  const actions: TabToComponentsCustomAction[] = [];
+  for (const raw of input) {
+    if (typeof raw !== "object" || raw === null) continue;
+    const record = raw as Record<string, unknown>;
+    const id = typeof record.id === "string" ? record.id.trim() : "";
+    const label = typeof record.label === "string" ? record.label.trim() : "";
+    const copy = typeof record.copy === "string" ? record.copy : "";
+    if (id === "" || id.length > MAX_CUSTOM_ACTION_ID) continue;
+    if (!CUSTOM_ACTION_ID_RE.test(id) || seen.has(id)) continue;
+    if (label === "" || label.length > MAX_CUSTOM_ACTION_LABEL) continue;
+    if (copy.trim() === "" || copy.length > MAX_CUSTOM_ACTION_COPY) continue;
+    seen.add(id);
+    const icon = isActionIcon(record.icon) ? record.icon : undefined;
+    actions.push(icon === undefined ? { id, label, copy } : { id, label, copy, icon });
+    if (actions.length >= MAX_CUSTOM_ACTIONS) break;
+  }
+  return actions;
+}
 
 /** IDE opened when the user does not pass `editor`. */
 export const DEFAULT_EDITOR = "code";
@@ -101,6 +151,7 @@ function resolveOptions(options: TabToComponentsOptions): ResolvedOptions {
     open,
     clickActions:
       clickActions.length > 0 ? clickActions : [...DEFAULT_CLICK_ACTIONS],
+    customActions: resolveCustomActions(options.customActions),
     menu: options.menu !== false,
     theme: VALID_THEMES.includes(options.theme as TabToComponentsTheme)
       ? (options.theme as TabToComponentsTheme)
@@ -296,7 +347,7 @@ export function tabToComponents(
   }
 
   function clientConfig(): ClientConfig {
-    return {
+    const config: ClientConfig = {
       version: VERSION,
       root: root.replace(/\/+$/, "") || "/",
       base,
@@ -307,6 +358,13 @@ export function tabToComponents(
       theme: resolved.theme,
       editorEndpoint,
     };
+    // Keep the injected prelude byte-identical for apps that do not use custom
+    // actions (the integration suite asserts its exact shape); the browser
+    // config falls back to an empty list.
+    if (resolved.customActions.length > 0) {
+      config.customActions = resolved.customActions;
+    }
+    return config;
   }
 
   const plugin: Plugin = {

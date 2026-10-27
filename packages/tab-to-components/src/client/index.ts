@@ -13,6 +13,11 @@ import { install } from "./install";
 export type { SourceActionCopy } from "./actions";
 export {
   IDE_LABELS,
+  aiContextText,
+  customActionCopy,
+  customActionDetail,
+  customActionIcon,
+  markdownText,
   sourceActionCopy,
   sourceActionDetail,
   sourceActionIcon,
@@ -26,6 +31,8 @@ export { copyText } from "./clipboard";
 export type {
   ClickAction,
   ClientConfig,
+  CustomAction,
+  CustomActionIcon,
   EditorIde,
   ModifierKey,
   OpenMode,
@@ -61,6 +68,19 @@ export {
   parseMarker,
   resolveFullPath,
 } from "./marker";
+export type { ActionContext } from "./template";
+export {
+  ACTION_PREVIEW_LENGTH,
+  MAX_ACTION_TEXT,
+  expandActionTemplate,
+  formatActionMarker,
+  formatChainNames,
+  limitActionText,
+  orderedChain,
+  previewActionText,
+  sanitizeActionName,
+  sanitizeActionPath,
+} from "./template";
 
 interface TtcEntryGlobals {
   __TTC_CONFIG__?: ClientConfig | undefined;

@@ -27,6 +27,11 @@ export type TabToComponentsOpenMode = "component" | "element" | "menu";
  * - `copy-path`: copy the project-relative path, e.g. `app/components/MyBox.tsx`.
  * - `copy-full-path`: copy the absolute path, e.g. `D:/proj/app/components/MyBox.tsx`.
  * - `copy-location`: copy `path:line:column`.
+ * - `copy-ai-context`: copy a small markdown context block (target element,
+ *   source location and component chain) for pasting into an AI coding tool.
+ * - `copy-mention`: copy an agent-friendly `@path:line:column` mention.
+ * - `copy-markdown`: copy an inline markdown reference (`` `<Name />` — `path:line:column` ``).
+ * - `copy-chain`: copy the component chain (`App > Card > Button`).
  *
  * The `open-*` actions are independent of the `editor` option: each one always
  * launches its own IDE, so one picker can offer several editors at once.
@@ -40,7 +45,11 @@ export type TabToComponentsClickAction =
   | "copy-file"
   | "copy-path"
   | "copy-full-path"
-  | "copy-location";
+  | "copy-location"
+  | "copy-ai-context"
+  | "copy-mention"
+  | "copy-markdown"
+  | "copy-chain";
 
 /** Actions shown by default: open the editor, copy the file name or full path. */
 export const DEFAULT_CLICK_ACTIONS: readonly TabToComponentsClickAction[] = [
@@ -48,6 +57,72 @@ export const DEFAULT_CLICK_ACTIONS: readonly TabToComponentsClickAction[] = [
   "copy-file",
   "copy-full-path",
 ];
+
+/**
+ * Icons a {@link TabToComponentsCustomAction} can use. This is the subset of the
+ * overlay's menu icons that makes sense for a copy row.
+ */
+export type TabToComponentsActionIcon =
+  | "copy-file"
+  | "copy-path"
+  | "copy-full-path"
+  | "copy-location"
+  | "component"
+  | "sparkles"
+  | "at"
+  | "markdown";
+
+/** Every icon `customActions[].icon` accepts. */
+export const CUSTOM_ACTION_ICONS: readonly TabToComponentsActionIcon[] = [
+  "copy-file",
+  "copy-path",
+  "copy-full-path",
+  "copy-location",
+  "component",
+  "sparkles",
+  "at",
+  "markdown",
+];
+
+/**
+ * Every `{placeholder}` a custom action's `copy` template can expand. Unknown
+ * tokens are left untouched so a template can still contain literal braces.
+ */
+export const CUSTOM_ACTION_PLACEHOLDERS = [
+  "file",
+  "absPath",
+  "name",
+  "line",
+  "column",
+  "location",
+  "chain",
+] as const;
+
+/** One placeholder a custom action template can expand. */
+export type TabToComponentsCustomActionPlaceholder =
+  (typeof CUSTOM_ACTION_PLACEHOLDERS)[number];
+
+/**
+ * A team-defined copy row appended to the source action picker after the
+ * built-in `clickActions` rows.
+ *
+ * The template runs in the browser and is expanded from the clicked element's
+ * source marker (and its component chain); it never reaches the dev server, so
+ * it cannot open files or run commands.
+ */
+export interface TabToComponentsCustomAction {
+  /** Stable id, unique per config; rendered as `data-action="custom:<id>"`. */
+  id: string;
+  /** Row label in the picker. */
+  label: string;
+  /**
+   * Clipboard template. Supports `{file}`, `{absPath}`, `{name}`, `{line}`,
+   * `{column}`, `{location}` and `{chain}`.
+   */
+  copy: string;
+  /** Optional row icon; defaults to `copy-location`. */
+  icon?: TabToComponentsActionIcon;
+}
 
 /**
  * Color theme of the overlay UI.
@@ -126,6 +201,17 @@ export interface TabToComponentsOptions {
   clickActions?: TabToComponentsClickAction | TabToComponentsClickAction[];
 
   /**
+   * Extra copy rows appended to the source action picker, after the built-in
+   * `clickActions` rows. Each row expands a clipboard template in the browser,
+   * so it is copy-only: it cannot open files or run commands.
+   *
+   * Templates support `{file}`, `{absPath}`, `{name}`, `{line}`, `{column}`,
+   * `{location}` and `{chain}`; unknown `{tokens}` are left untouched.
+   * @default []
+   */
+  customActions?: readonly TabToComponentsCustomAction[];
+
+  /**
    * Show the component chain picker on modifier + right click.
    * @default true
    */
@@ -201,6 +287,7 @@ export interface ResolvedOptions {
   keyboard: InspectorKey[];
   open: TabToComponentsOpenMode;
   clickActions: TabToComponentsClickAction[];
+  customActions: TabToComponentsCustomAction[];
   menu: boolean;
   theme: TabToComponentsTheme;
   overlay: "all" | "entry" | false;
@@ -225,6 +312,8 @@ export interface ClientConfig {
   keyboard: InspectorKey[];
   open: TabToComponentsOpenMode;
   clickActions: TabToComponentsClickAction[];
+  /** Omitted from the injected JSON when no custom actions are configured. */
+  customActions?: TabToComponentsCustomAction[];
   menu: boolean;
   theme: TabToComponentsTheme;
   editorEndpoint: string;

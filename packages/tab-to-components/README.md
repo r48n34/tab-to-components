@@ -5,7 +5,7 @@
 
 **Alt+click any React element in your dev server: jump to the JSX that rendered it, or copy its file name to the clipboard.**
 
-A dev-only Vite plugin for the modern React stack: **React 18 & 19**, **Vite 6, 7 & 8**, **React Router v6 / v7 / v8**, **TanStack Start**, **Astro 7** (React islands), **Vike 0.4** (`vike-react`), and **Remix v2** — including streamed SSR, where the other click-to-component tools stopped working.
+A dev-only Vite plugin for the modern React stack: **React 18 & 19**, **Vite 5, 6, 7 & 8**, **React Router v6 / v7 / v8**, **TanStack Start**, **Astro 7** (React islands), **Vike 0.4** (`vike-react`), and **Remix v2** — including streamed SSR, where the other click-to-component tools stopped working.
 
 See the [changelog](https://github.com/r48n34/tab-to-components/blob/main/packages/tab-to-components/CHANGELOG.md) for release notes.
 
@@ -15,6 +15,7 @@ See the [changelog](https://github.com/r48n34/tab-to-components/blob/main/packag
 - Works in `react-router dev` (SSR, streaming, SPA mode), TanStack Start, Astro islands, Vike SSR, Remix v2 **and** plain Vite.
 - **Opens VS Code by default**; `editor: "cursor" | "trae" | "webstorm" | …`, a command template, a launcher function, or `"auto"` for auto-detection.
 - **Open or copy:** the Alt+click picker can open the source in your IDE or copy the file name (`MyBox.tsx`), the project-relative path, the full absolute path (`D:/proj/app/components/MyBox.tsx`), or `path:line:column` to the clipboard.
+- **Paste-ready context:** optional **Copy for AI** (target + component chain), **Copy @mention**, **Copy as Markdown** and **Copy component chain** rows, plus `customActions` templates for team-specific copy formats.
 - Never ships to production: no markers, no client code, no extra imports in `vite build`, `react-router build`, `astro build` or `vike build`.
 
 ## Install
@@ -54,7 +55,7 @@ import { defineConfig } from "vite";
 import { tabToComponents } from "tab-to-components";
 
 export default defineConfig({
-  plugins: [react(), tabToComponents()],
+  plugins: [tabToComponents(), react()],
 });
 ```
 
@@ -129,7 +130,7 @@ export default defineConfig({
 
 Remix v2 supports Vite 5/6 and React 18. Remix v1 uses its classic esbuild compiler, not Vite, so it is not supported by this plugin.
 
-> **Plugin order:** `tabToComponents()` works before or after other JSX-transforming plugins (it has a compiled-JSX fallback). The one exception is `@vitejs/plugin-react` **4.x on Vite 7**, which prepends its HMR preamble before the JSX transform and shifts the positions it reports — use `@vitejs/plugin-react` ≥ 5.1 there, or put `tabToComponents()` first.
+> **Plugin order:** `tabToComponents()` works before or after other JSX-transforming plugins (it has a compiled-JSX fallback). The exception is `@vitejs/plugin-react` **4.x**, which prepends its Fast Refresh preamble before the JSX transform and shifts the positions it reports. That applies on **Vite 5**, where plugin-react 4.x is the only supported pairing, and on Vite 7 (`@vitejs/plugin-react` 4.x there). List `tabToComponents()` before `react()` as in the plain Vite snippet above; on Vite 6/7 you can alternatively use `@vitejs/plugin-react` ≥ 5.1, and on Vite 8 ≥ 5.2 (or 6.x).
 
 ---
 
@@ -138,13 +139,13 @@ Remix v2 supports Vite 5/6 and React 18. Remix v1 uses its classic esbuild compi
 | Action | Result |
 | --- | --- |
 | Hold <kbd>Alt</kbd> + move the mouse | The element under the cursor is outlined; a label shows `<Component />` and `file:line:column`. |
-| <kbd>Alt</kbd> + left click | Opens the **source action picker** for the nearest component usage site (e.g. the `<Button />` line in your page): **Open in IDE**, **Copy file name** (`MyBox.tsx`), **Copy full path** (`D:/proj/app/components/MyBox.tsx`), or open directly in a specific IDE — VS Code, Cursor, WebStorm or Trae. Falls back to the clicked element when it was rendered directly. |
+| <kbd>Alt</kbd> + left click | Opens the **source action picker** for the nearest component usage site (e.g. the `<Button />` line in your page): **Open in IDE**, **Copy file name** (`MyBox.tsx`), **Copy full path** (`D:/proj/app/components/MyBox.tsx`), or open directly in a specific IDE — VS Code, Cursor, WebStorm or Trae. Optional `copy-ai-context`, `copy-mention`, `copy-markdown` and `copy-chain` rows cover AI tools and chat, and `customActions` adds team-defined copy rows. Falls back to the clicked element when it was rendered directly. |
 | <kbd>Alt</kbd> + right click | Opens the **component chain picker** listing every marked JSX ancestor (`<button />`, `<Button />`, `<Card />`, …). Click a row, or use <kbd>↑</kbd>/<kbd>↓</kbd>/<kbd>Enter</kbd>, <kbd>Esc</kbd> to close. |
 | After an action | A short toast confirms the file that was opened or the text that was copied. |
 
-Each picker row starts with a small icon for what it acts on — an external link for **Open in IDE**, a page for **Copy file name**, a folder or a hard drive for the relative/full path, a pin for the **file:line:column** location, and a stacked box for chain rows — so the choices are scannable at a glance.
+Each picker row starts with a small icon for what it acts on — an external link for **Open in IDE**, a page for **Copy file name**, a folder or a hard drive for the relative/full path, a pin for the **file:line:column** location, a four-point sparkle for **Copy for AI**, an at-sign for **Copy @mention**, a markdown badge for **Copy as Markdown**, and a stacked box for chain rows — so the choices are scannable at a glance.
 
-Configuring a **single** action skips the picker and runs it immediately — `clickActions: ["open"]` keeps the pre-0.4 instant-open behavior (see [Copy source paths](#copy-source-paths)). A per-IDE row works the same way: `clickActions: ["open-cursor"]` opens Cursor immediately.
+Configuring a **single** row and no custom actions skips the picker and runs it immediately — `clickActions: ["open"]` keeps the pre-0.4 instant-open behavior (see [Copy source paths](#copy-source-paths)). A per-IDE row works the same way: `clickActions: ["open-cursor"]` opens Cursor immediately.
 
 The app's own click handler is **not** triggered (the plugin suppresses it in the capture phase), and no overlay DOM is added except one `<div data-ttc-ui>` shadow root with `pointer-events: none`. The overlay is **dark by default**; set `theme: "light"` to match a light app (see [Theme](#theme)).
 
@@ -159,7 +160,7 @@ data-ttc-name   JSX tag name, e.g. "Button"                (component elements o
 
 ## Copy source paths
 
-By default the Alt+click picker offers **Open in IDE**, **Copy file name** and **Copy full path**. “Copy file name” writes the bare file (`MyBox.tsx`) for a chat message or an issue; “Copy full path” writes the absolute path built from the Vite project root (`D:/proj/app/components/MyBox.tsx`) for a terminal or a script:
+By default the Alt+click picker offers **Open in IDE**, **Copy file name** and **Copy full path**. “Copy file name” writes the bare file (`MyBox.tsx`) for a chat message or an issue; “Copy full path” writes the absolute path built from the Vite project root (`D:/proj/app/components/MyBox.tsx`) for a terminal or a script. The AI/share presets and team-defined custom rows cover pasting context into a chat, an issue or an AI coding tool:
 
 ```
 <Button />   app/components/MyBox.tsx:12:5
@@ -167,6 +168,10 @@ By default the Alt+click picker offers **Open in IDE**, **Copy file name** and *
              → Copy full path         D:/proj/app/components/MyBox.tsx
              → Copy relative path     app/components/MyBox.tsx
              → Copy file:line:column  app/components/MyBox.tsx:12:5
+             → Copy @mention          @app/components/MyBox.tsx:12:5
+             → Copy for AI            Target + numbered component chain (markdown)
+             → Copy as Markdown       `<MyBox />` — `app/components/MyBox.tsx:12:5`
+             → Copy component chain   App > Card > MyBox > button
 ```
 
 Choose which source actions the picker offers with `clickActions` (order is preserved):
@@ -181,6 +186,9 @@ tabToComponents({
 
   // Add every copy variant, including the project-relative path and location.
   // clickActions: ["open", "copy-file", "copy-full-path", "copy-path", "copy-location"],
+
+  // Copy an AI-ready context block (target + component chain) in one click.
+  // clickActions: ["copy-ai-context", "copy-mention", "copy-file"],
 
   // One action skips the picker entirely: instant open, the pre-0.4 behavior.
   // clickActions: ["open"],
@@ -204,10 +212,47 @@ tabToComponents({
 | `"copy-path"` | `app/components/MyBox.tsx` | `Copied path: app/components/MyBox.tsx` |
 | `"copy-full-path"` | `D:/proj/app/components/MyBox.tsx` | `Copied full path: D:/proj/app/components/MyBox.tsx` |
 | `"copy-location"` | `app/components/MyBox.tsx:12:5` | `Copied location: app/components/MyBox.tsx:12:5` |
+| `"copy-ai-context"` | `Target: <MyBox /> — app/components/MyBox.tsx:12:5` plus a numbered `Component chain (outermost → innermost):` block | `Copied AI context: app/components/MyBox.tsx:12:5` |
+| `"copy-mention"` | `@app/components/MyBox.tsx:12:5` | `Copied @mention: @app/components/MyBox.tsx:12:5` |
+| `"copy-markdown"` | `` `<MyBox />` — `app/components/MyBox.tsx:12:5` `` | `Copied Markdown: app/components/MyBox.tsx:12:5` |
+| `"copy-chain"` | `App > Card > MyBox > button` | `Copied component chain: App > Card > MyBox > button` |
 
 The picker supports the mouse and the keyboard (<kbd>↑</kbd>/<kbd>↓</kbd>, <kbd>Home</kbd>/<kbd>End</kbd>, <kbd>Enter</kbd>/<kbd>Space</kbd>, <kbd>Esc</kbd>). Every row refers to the **same source location** the row would open — the nearest component usage site, or the clicked element for `open: "element"`; use <kbd>Alt</kbd>+right click to reach another marked ancestor. “Copy full path” joins the injected Vite project root with the marker path, so it is the path on the **dev-server machine** (a container/WSL/SSH path if the server runs there). Copying uses `navigator.clipboard.writeText` on localhost and falls back to `document.execCommand("copy")` when the Clipboard API is unavailable; if both fail the toast shows the text so it can be copied manually. `clickActions` is ignored when `open: "menu"` is used — that mode keeps the component chain picker on left click.
 
 The per-IDE rows ignore the `editor` option: `"open"` still follows `editor` (VS Code by default), while `"open-webstorm"` always launches `webstorm`. Each command — `code`, `cursor`, `webstorm` or `trae` — must be launchable from the dev-server machine (on `PATH`, or reachable as that command); `webstorm` uses the JetBrains CLI arguments and the other three use the VS Code-family `-r -g` arguments. If an IDE is missing, the terminal logs the failure and the toast shows the full `path:line:column` so you can copy it, e.g. `Could not open in WebStorm. Copy: D:/proj/app/components/MyBox.tsx:12:5`.
+
+### Custom copy actions
+
+Add your own copy rows with `customActions`. They are appended after the `clickActions` rows, in the order you declare them, and are **copy-only**: each template is expanded in the browser from the clicked element's source marker and component chain, so the expanded text is produced and copied locally, is never sent back to the dev server, and cannot open files or run commands. (The template itself is read from your Vite config and injected into the browser config; only the resulting clipboard text stays local.)
+
+```ts
+tabToComponents({
+  clickActions: ["open", "copy-ai-context"],
+  customActions: [
+    {
+      id: "review",
+      label: "Copy review prompt",
+      icon: "sparkles",
+      copy: "Please review {name} at {location}.\nComponent chain: {chain}",
+    },
+  ],
+});
+```
+
+Templates support these placeholders; unknown `{tokens}` are left as written so a template can still contain literal braces:
+
+| Placeholder | Value |
+| --- | --- |
+| `{file}` | Project-relative path, e.g. `app/components/MyBox.tsx` |
+| `{absPath}` | Absolute path on the dev-server machine |
+| `{name}` | Component or host tag name, e.g. `MyBox` or `button` |
+| `{line}` / `{column}` | 1-based position |
+| `{location}` | `file:line:column` |
+| `{chain}` | Component chain, outermost first, including the clicked host element, e.g. `App > Card > MyBox > button` |
+
+`id` must be unique and URL-safe (`review`, `issue-ref`), `label` is the row text, `copy` is the template, and `icon` is optional: `copy-file`, `copy-path`, `copy-full-path`, `copy-location`, `component`, `sparkles`, `at` or `markdown` (default `copy-location`). Up to 12 custom actions are kept, and malformed entries are dropped when the options are resolved. The toast shows a one-line preview, e.g. `Copied: Please review MyBox at app/components/MyBox.tsx:12:5.` `customActions` is ignored when `open: "menu"` is used, like `clickActions`; a single built-in row plus a custom action opens the picker instead of running instantly.
+
+Display names and the path placeholders (`{file}`, `{absPath}`, `{location}`) are stripped of control and bidi characters before copying, and the whole clipboard value is capped at 4,000 characters. The built-in path rows keep their pre-existing output; markers authored by hand in page markup are trusted for display, so only copy rows from a dev page you trust.
 
 ---
 
@@ -232,6 +277,7 @@ tabToComponents({
   keyboard: "alt",
   open: "component",
   clickActions: ["open", "copy-file", "copy-full-path"],
+  // customActions: [{ id: "review", label: "Copy review prompt", copy: "{location}" }],
   menu: true,
   theme: "dark",               // "dark" (default) or "light"
   overlay: "all",
@@ -248,7 +294,8 @@ tabToComponents({
 | --- | --- | --- |
 | `keyboard` | `"alt"` | Modifier key(s) that arm the inspector: `"alt"`, `"ctrl"`, `"meta"`, `"shift"`, or an array (all must be held). |
 | `open` | `"component"` | What a modifier + click opens: `"component"` = nearest component usage site (with fallback), `"element"` = the clicked element's own JSX site, `"menu"` = show the picker instead. |
-| `clickActions` | `["open", "copy-file", "copy-full-path"]` | Rows of the modifier + left-click source action picker, in order: `"open"`, `"open-code"`, `"open-cursor"`, `"open-webstorm"`, `"open-trae"`, `"copy-file"`, `"copy-path"`, `"copy-full-path"`, `"copy-location"` (or a single value). One action skips the picker. The `open-*` rows open in that specific IDE regardless of `editor`. Ignored for `open: "menu"`. See [Copy source paths](#copy-source-paths). |
+| `clickActions` | `["open", "copy-file", "copy-full-path"]` | Rows of the modifier + left-click source action picker, in order: `"open"`, `"open-code"`, `"open-cursor"`, `"open-webstorm"`, `"open-trae"`, `"copy-file"`, `"copy-path"`, `"copy-full-path"`, `"copy-location"`, `"copy-ai-context"`, `"copy-mention"`, `"copy-markdown"`, `"copy-chain"` (or a single value). One action skips the picker. The `open-*` rows open in that specific IDE regardless of `editor`. Ignored for `open: "menu"`. See [Copy source paths](#copy-source-paths). |
+| `customActions` | `[]` | Extra **copy-only** rows appended after `clickActions`, each with an `id`, `label`, `copy` template and optional `icon`. Templates support `{file}`, `{absPath}`, `{name}`, `{line}`, `{column}`, `{location}` and `{chain}`. See [Custom copy actions](#custom-copy-actions). |
 | `menu` | `true` | Enable the modifier + right-click chain picker. |
 | `theme` | `"dark"` | Color theme of the overlay: `"dark"` (the original blue-on-black UI) or `"light"` (white surfaces with darker blue accents for contrast). See [Theme](#theme). |
 | `overlay` | `"all"` | `"all"` injects the browser runtime through client modules (works in every framework, including React Router's streamed SSR). `"entry"` only injects it into `entry.client.*` modules. `false` disables the runtime (markers only). |
@@ -323,6 +370,8 @@ LAUNCH_EDITOR=webstorm  pnpm dev
 ```
 
 > **Windows security note.** `editor: "auto"` delegates to Vite's `/__open-in-editor` endpoint, which comes from Vite/`launch-editor` and exists on every Vite dev server. Keep Vite patched: [GHSA-587h-7wmj-h5pm](https://github.com/advisories/GHSA-587h-7wmj-h5pm) affects Vite 6 ≤ 6.4.3, 7.0–7.3.6, 8.0–8.1.5, 8.2.0–8.2.3 and 8.3.0–8.3.2 (fixed in 6.4.4 / 7.3.7 / 8.1.6 / 8.2.4 / 8.3.3), and [GHSA-v6wh-96g9-6wx3](https://github.com/advisories/GHSA-v6wh-96g9-6wx3) affects Vite 6 ≤ 6.4.2, 7.0–7.3.4 and 8.0.0–8.0.15 (fixed in 6.4.3 / 7.3.5 / 8.0.16). The default `editor: "code"` path uses the plugin's own endpoint and is not affected by those advisories.
+>
+> **Vite 5 is end-of-life.** Vite 5.4.21 is the last 5.x release, and the advisories above publish fixed releases for Vite 6 and newer — there is no patched 5.x release. On Vite 5, treat `editor: "auto"` (which delegates to Vite's `/__open-in-editor` endpoint) as unpatched: stay on the default `editor: "code"` path, which uses the plugin's own endpoint and is not affected by those advisories, or upgrade within a maintained Vite major.
 
 What the presets launch:
 
@@ -369,17 +418,17 @@ Verified against real dev servers, SSR renders and production builds. The full 1
 | | Support |
 | --- | --- |
 | React | **18.3.1** and **19.3.1** |
-| Vite | **8.3.5** on the Vite / React Router / TanStack Start / Astro / Vike rows; **7.3.7** through `pnpm test:matrix`; **6.4.5** through Remix v2 |
+| Vite | **5.4.21** through `pnpm test:matrix` (React 18 and 19); **6.4.5** through Remix v2; **7.3.7** through `pnpm test:matrix` (React 19); **8.3.5** in the main integration suite and on the Vite / React Router / TanStack Start / Astro / Vike rows |
 | React Router | v6 **6.30.6** (SPA), v7 **7.18.4** and v8 **8.5.0** framework mode (SSR) |
 | TanStack Start | **1.169.4** (TanStack Router **1.170.46**) on Vite 8 |
 | Astro | **7.4.2** with `@astrojs/react` **7.1.1** on React **18.3.1** and **19.3.1**; React islands only (`.astro` markup is not instrumented) |
 | Vike | **0.4.268** with `vike-react` **0.6.31** on React **19.3.1**; React 18 is outside the renderer's peer range |
-| RedwoodJS | Classic **not supported**: its `@redwoodjs/vite` package pins **Vite 5**, below this plugin's Vite 6+ range; the Vite-based **RedwoodSDK** is emerging and not yet covered |
+| RedwoodJS | Classic **not in the verified matrix**: its `@redwoodjs/vite` package pins **Vite 5**, which the current peer range (`^5.0.0 || ^6.0.0 || ^7.0.0 || ^8.0.0`) accepts, but there is no Redwood fixture, so the integration is unverified; the Vite-based **RedwoodSDK** is still emerging |
 | Waku | **1.0.0-rc.x** (rc.4 at the time of writing) — **deferred** until a stable release; not tested |
 | Shopify Hydrogen | Built on **React Router 7**, so it inherits the React Router v7 row instead of a separate matrix entry |
-| Remix | v2 **2.17.5** on Vite 6 (React 18 only); v1 has no Vite integration |
+| Remix | v2 **2.17.5** on Vite **6.4.5** (React 18 only; v2 supports Vite 5/6); v1 has no Vite integration |
 | Next.js | **16.4.3** — **not supported**: `next dev` uses Turbopack (default) or webpack, not Vite; Next.js 16 accepts React 18.2+ (Pages Router) and React 19 (App Router) upstream |
-| `@vitejs/plugin-react` | **6.1.2** on Vite 8; 5.x for the Vite 7 suite |
+| `@vitejs/plugin-react` | **4.7.0** on Vite 5; **5.1.4** on the Vite 7 suite; **6.1.2** on Vite 8 |
 | Editors | **VS Code (`code`) by default**; presets for the VS Code family (incl. **Cursor/Trae**), JetBrains, Zed, Sublime, Vim, Emacs; command templates and custom launcher functions; `editor: "auto"` for Vite's `launch-editor` auto-detection |
 
 Known compatibility constraints (not plugin bugs):
@@ -389,7 +438,7 @@ Known compatibility constraints (not plugin bugs):
 - **Remix v1** uses a classic esbuild compiler, not Vite, so this Vite plugin cannot run in a Remix v1 app.
 - **Vike + React 18 is blocked upstream**: `vike-react@0.6.31` declares `peer react ">=19"` / `peer react-dom ">=19"`, so React 18 is not supported there.
 - **Astro** only instruments React/JSX modules: `.astro` markup gets no markers, so the overlay is available on pages that hydrate a React island.
-- **RedwoodJS classic is upstream-blocked by Vite 5**: its `@redwoodjs/vite` package pins Vite 5, below this plugin's Vite 6+ range. The Vite-based **RedwoodSDK** is emerging and not yet in the matrix.
+- **RedwoodJS classic is not in the verified matrix**: its `@redwoodjs/vite` package pins Vite 5, which the current peer range (`^5.0.0 || ^6.0.0 || ^7.0.0 || ^8.0.0`) accepts, so it installs — but there is no Redwood fixture and the integration is untested. The Vite-based **RedwoodSDK** is still emerging, and the plugin does not claim Redwood support.
 - **Waku** is still on `1.0.0-rc.x` (rc.4 at the time of writing), so it is deferred until a stable release.
 - **Shopify Hydrogen** runs on React Router 7 and inherits the React Router v7 row rather than a separate matrix entry.
 - **Next.js** has no Vite integration: `next dev` runs Turbopack (default in Next.js 16) or webpack with the SWC-based Next.js Compiler, so the plugin's transform, virtual client module and editor endpoint cannot be installed. React is not the blocker — Next.js 16.4.3 accepts React 18.2+ (Pages Router) and React 19 (App Router).
@@ -413,8 +462,8 @@ The plugin is dev-only. Make sure you run the dev server (not `vite preview`/`bu
 **The editor does not open.**
 The default editor is **VS Code** (`code`), so `code` must be on `PATH` (in VS Code: *Shell Command: Install 'code' command in PATH*). Watch the terminal for a `Could not launch "code"` message and the browser network tab for `__ttc/open-in-editor?file=…`. To use another IDE, pass `editor: "cursor"` / `"trae"` / `"webstorm"` / a command template / a function. To fall back to Vite's detection + `LAUNCH_EDITOR`, pass `editor: "auto"`. The toast shows the exact path to open manually.
 
-**The line number is off by a constant on Vite 7.**
-You are on `@vitejs/plugin-react` 4.x, which prepends its HMR preamble before the JSX transform. Upgrade to ≥ 5.1 or put `tabToComponents()` first in the plugins array.
+**The line number is off by a constant on Vite 5 or Vite 7.**
+You are on `@vitejs/plugin-react` 4.x, which prepends its Fast Refresh preamble before the JSX transform and shifts the positions it reports. Put `tabToComponents()` first in the plugins array (on Vite 5 that is the only supported pairing, so keep that order); on Vite 6/7 you can also upgrade to `@vitejs/plugin-react` ≥ 5.1, and on Vite 8 ≥ 5.2 (or 6.x).
 
 **SSR HTML snapshots changed.**
 The plugin annotates server-rendered markup by default so hydration stays consistent. Pass `ssr: false` to keep the server HTML untouched.
@@ -434,7 +483,7 @@ Nothing is injected. The plugin is `apply: "serve"`, and every hook independentl
 - **React Server Components** (`react-router/rsc`) are best-effort: markers work, the overlay is client-only.
 - **Astro** markers cover React/JSX modules in hydrated islands; `.astro` markup itself is not instrumented.
 - **Vike** is supported with the `vike-react` renderer on React 19 only; React 18 is outside its peer range.
-- **RedwoodJS classic**, **Waku** and **Shopify Hydrogen** are not separately tested: Redwood classic is upstream-blocked by Vite 5, Waku is still pre-1.0, and Hydrogen follows the React Router 7 row.
+- **RedwoodJS classic**, **Waku** and **Shopify Hydrogen** are not separately tested: Redwood classic pins Vite 5 (inside the current peer range, but without a verified fixture), Waku is still pre-1.0, and Hydrogen follows the React Router 7 row.
 - **Remix v1** is not supported: it predates Remix's Vite integration and uses its classic esbuild compiler.
 - **Next.js** is not supported: it runs its own Turbopack/webpack pipeline instead of Vite, so markers and the overlay cannot be injected.
 - **React Router v8 + React 18** and **Remix v2 + React 19** are outside those frameworks' declared peer ranges, so the plugin does not claim them.

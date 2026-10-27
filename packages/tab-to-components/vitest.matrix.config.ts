@@ -1,12 +1,15 @@
 import { defineConfig } from "vitest/config";
 
 /**
- * Version-matrix suite: runs the plugin against a different Vite major than the
- * main integration suite (Vite 7 next to Vite 8).
+ * Version-matrix suite: runs the plugin against the other Vite majors the
+ * package supports next to the main integration suite (Vite 5 and Vite 7 next
+ * to Vite 8).
  *
- * Vite 7 transforms TypeScript with esbuild, which cannot start in every
- * sandboxed environment; `test/version-matrix/matrix.test.ts` detects that and
- * skips itself with an explanatory message instead of failing. Run it with
+ * Vite 5 and Vite 7 transform TypeScript with esbuild, which cannot start in
+ * every sandboxed environment; `test/version-matrix/matrix.test.ts` detects
+ * that and skips the esbuild-dependent tiers with an explanatory message. The
+ * Vite 5 virtual-client/editor-middleware test is unguarded (it disables
+ * esbuild), so real Vite 5 interop still runs there. Run the whole suite with
  * `pnpm test:matrix`.
  */
 export default defineConfig({
