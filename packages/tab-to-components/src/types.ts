@@ -17,14 +17,26 @@ export type TabToComponentsOpenMode = "component" | "element" | "menu";
 /**
  * One action of the modifier + left-click picker.
  *
- * - `open`: open the source location in the editor (the pre-0.4 behavior).
+ * - `open`: open the source location in the configured editor (the pre-0.4
+ *   behavior).
+ * - `open-code`: open it in VS Code on the dev-server machine.
+ * - `open-cursor`: open it in Cursor on the dev-server machine.
+ * - `open-webstorm`: open it in WebStorm on the dev-server machine.
+ * - `open-trae`: open it in Trae on the dev-server machine.
  * - `copy-file`: copy the bare file name, e.g. `MyBox.tsx`.
  * - `copy-path`: copy the project-relative path, e.g. `app/components/MyBox.tsx`.
  * - `copy-full-path`: copy the absolute path, e.g. `D:/proj/app/components/MyBox.tsx`.
  * - `copy-location`: copy `path:line:column`.
+ *
+ * The `open-*` actions are independent of the `editor` option: each one always
+ * launches its own IDE, so one picker can offer several editors at once.
  */
 export type TabToComponentsClickAction =
   | "open"
+  | "open-code"
+  | "open-cursor"
+  | "open-webstorm"
+  | "open-trae"
   | "copy-file"
   | "copy-path"
   | "copy-full-path"

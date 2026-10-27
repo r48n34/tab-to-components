@@ -7,6 +7,7 @@
 
 A dev-only Vite plugin for the modern React stack: **React 18 & 19**, **Vite 6, 7 & 8**, **React Router v6 / v7 / v8**, **TanStack Start**, **Astro 7** (React islands), **Vike 0.4** (`vike-react`), and **Remix v2** — including streamed SSR, where the other click-to-component tools stopped working.
 
+See the [changelog](packages/tab-to-components/CHANGELOG.md) for release notes.
 
 ![Hovering the count button: the overlay outlines it and shows the Button component's source location, src/App.tsx:20:9](https://github.com/r48n34/tab-to-components/raw/main/docs/demo-hover.png)
 
@@ -15,6 +16,7 @@ A dev-only Vite plugin for the modern React stack: **React 18 & 19**, **Vite 6, 
 - **Opens VS Code by default**; `editor: "cursor" | "trae" | "webstorm" | …`, a command template, a launcher function, or `"auto"` for auto-detection.
 - **Open or copy:** the Alt+click picker can open the source in your IDE or copy the file name (`MyBox.tsx`), the project-relative path, the full absolute path (`D:/proj/app/components/MyBox.tsx`), or `path:line:column` to the clipboard.
 - Never ships to production: no markers, no client code, no extra imports in `vite build`, `react-router build`, `astro build` or `vike build`.
+- **No Vite config?** A companion [Chrome extension](./packages/tab-to-components-extension) brings the same Alt+click workflow to any local React dev server.
 
 ## Install
 
@@ -137,13 +139,13 @@ Remix v2 supports Vite 5/6 and React 18. Remix v1 uses its classic esbuild compi
 | Action | Result |
 | --- | --- |
 | Hold <kbd>Alt</kbd> + move the mouse | The element under the cursor is outlined; a label shows `<Component />` and `file:line:column`. |
-| <kbd>Alt</kbd> + left click | Opens the **source action picker** for the nearest component usage site (e.g. the `<Button />` line in your page): **Open in IDE**, **Copy file name** (`MyBox.tsx`) or **Copy full path** (`D:/proj/app/components/MyBox.tsx`). Falls back to the clicked element when it was rendered directly. |
+| <kbd>Alt</kbd> + left click | Opens the **source action picker** for the nearest component usage site (e.g. the `<Button />` line in your page): **Open in IDE**, **Copy file name** (`MyBox.tsx`), **Copy full path** (`D:/proj/app/components/MyBox.tsx`), or open directly in a specific IDE — VS Code, Cursor, WebStorm or Trae. Falls back to the clicked element when it was rendered directly. |
 | <kbd>Alt</kbd> + right click | Opens the **component chain picker** listing every marked JSX ancestor (`<button />`, `<Button />`, `<Card />`, …). Click a row, or use <kbd>↑</kbd>/<kbd>↓</kbd>/<kbd>Enter</kbd>, <kbd>Esc</kbd> to close. |
 | After an action | A short toast confirms the file that was opened or the text that was copied. |
 
 Each picker row starts with a small icon for what it acts on — an external link for **Open in IDE**, a page for **Copy file name**, a folder or a hard drive for the relative/full path, a pin for the **file:line:column** location, and a stacked box for chain rows — so the choices are scannable at a glance.
 
-Configuring a **single** action skips the picker and runs it immediately — `clickActions: ["open"]` keeps the pre-0.4 instant-open behavior (see [Copy source paths](#copy-source-paths)).
+Configuring a **single** action skips the picker and runs it immediately — `clickActions: ["open"]` keeps the pre-0.4 instant-open behavior (see [Copy source paths](#copy-source-paths)). A per-IDE row works the same way: `clickActions: ["open-cursor"]` opens Cursor immediately.
 
 The app's own click handler is **not** triggered (the plugin suppresses it in the capture phase), and no overlay DOM is added except one `<div data-ttc-ui>` shadow root with `pointer-events: none`. The overlay is **dark by default**; set `theme: "light"` to match a light app (see [Theme](#theme)).
 
@@ -168,18 +170,24 @@ By default the Alt+click picker offers **Open in IDE**, **Copy file name** and *
              → Copy file:line:column  app/components/MyBox.tsx:12:5
 ```
 
-Choose which copy actions the picker offers with `clickActions` (order is preserved):
+Choose which source actions the picker offers with `clickActions` (order is preserved):
 
 ```ts
 tabToComponents({
   // Default: open the editor, copy the file name or copy the full path.
   clickActions: ["open", "copy-file", "copy-full-path"],
 
+  // Open a specific IDE per row, independent of the `editor` option.
+  // clickActions: ["open", "open-webstorm", "copy-file", "copy-full-path"],
+
   // Add every copy variant, including the project-relative path and location.
   // clickActions: ["open", "copy-file", "copy-full-path", "copy-path", "copy-location"],
 
   // One action skips the picker entirely: instant open, the pre-0.4 behavior.
   // clickActions: ["open"],
+
+  // The same rule works for a per-IDE row: instant Cursor open.
+  // clickActions: ["open-cursor"],
 
   // Copy-only: Alt+click never opens the editor.
   // clickActions: ["copy-full-path"],
@@ -189,12 +197,18 @@ tabToComponents({
 | Action | Clipboard content | Toast |
 | --- | --- | --- |
 | `"open"` | — (asks the dev server to open the source in your editor) | `Opened <Button /> app/routes/home.tsx:19:7` |
+| `"open-code"` | — | `Opened <Button /> app/routes/home.tsx:19:7 in VS Code` |
+| `"open-cursor"` | — | `Opened <Button /> app/routes/home.tsx:19:7 in Cursor` |
+| `"open-webstorm"` | — | `Opened <Button /> app/routes/home.tsx:19:7 in WebStorm` |
+| `"open-trae"` | — | `Opened <Button /> app/routes/home.tsx:19:7 in Trae` |
 | `"copy-file"` | `MyBox.tsx` | `Copied file name: MyBox.tsx` |
 | `"copy-path"` | `app/components/MyBox.tsx` | `Copied path: app/components/MyBox.tsx` |
 | `"copy-full-path"` | `D:/proj/app/components/MyBox.tsx` | `Copied full path: D:/proj/app/components/MyBox.tsx` |
 | `"copy-location"` | `app/components/MyBox.tsx:12:5` | `Copied location: app/components/MyBox.tsx:12:5` |
 
 The picker supports the mouse and the keyboard (<kbd>↑</kbd>/<kbd>↓</kbd>, <kbd>Home</kbd>/<kbd>End</kbd>, <kbd>Enter</kbd>/<kbd>Space</kbd>, <kbd>Esc</kbd>). Every row refers to the **same source location** the row would open — the nearest component usage site, or the clicked element for `open: "element"`; use <kbd>Alt</kbd>+right click to reach another marked ancestor. “Copy full path” joins the injected Vite project root with the marker path, so it is the path on the **dev-server machine** (a container/WSL/SSH path if the server runs there). Copying uses `navigator.clipboard.writeText` on localhost and falls back to `document.execCommand("copy")` when the Clipboard API is unavailable; if both fail the toast shows the text so it can be copied manually. `clickActions` is ignored when `open: "menu"` is used — that mode keeps the component chain picker on left click.
+
+The per-IDE rows ignore the `editor` option: `"open"` still follows `editor` (VS Code by default), while `"open-webstorm"` always launches `webstorm`. Each command — `code`, `cursor`, `webstorm` or `trae` — must be launchable from the dev-server machine (on `PATH`, or reachable as that command); `webstorm` uses the JetBrains CLI arguments and the other three use the VS Code-family `-r -g` arguments. If an IDE is missing, the terminal logs the failure and the toast shows the full `path:line:column` so you can copy it, e.g. `Could not open in WebStorm. Copy: D:/proj/app/components/MyBox.tsx:12:5`.
 
 ---
 
@@ -235,7 +249,7 @@ tabToComponents({
 | --- | --- | --- |
 | `keyboard` | `"alt"` | Modifier key(s) that arm the inspector: `"alt"`, `"ctrl"`, `"meta"`, `"shift"`, or an array (all must be held). |
 | `open` | `"component"` | What a modifier + click opens: `"component"` = nearest component usage site (with fallback), `"element"` = the clicked element's own JSX site, `"menu"` = show the picker instead. |
-| `clickActions` | `["open", "copy-file", "copy-full-path"]` | Rows of the modifier + left-click source action picker, in order: `"open"`, `"copy-file"`, `"copy-path"`, `"copy-full-path"`, `"copy-location"` (or a single value). One action skips the picker. Ignored for `open: "menu"`. See [Copy source paths](#copy-source-paths). |
+| `clickActions` | `["open", "copy-file", "copy-full-path"]` | Rows of the modifier + left-click source action picker, in order: `"open"`, `"open-code"`, `"open-cursor"`, `"open-webstorm"`, `"open-trae"`, `"copy-file"`, `"copy-path"`, `"copy-full-path"`, `"copy-location"` (or a single value). One action skips the picker. The `open-*` rows open in that specific IDE regardless of `editor`. Ignored for `open: "menu"`. See [Copy source paths](#copy-source-paths). |
 | `menu` | `true` | Enable the modifier + right-click chain picker. |
 | `theme` | `"dark"` | Color theme of the overlay: `"dark"` (the original blue-on-black UI) or `"light"` (white surfaces with darker blue accents for contrast). See [Theme](#theme). |
 | `overlay` | `"all"` | `"all"` injects the browser runtime through client modules (works in every framework, including React Router's streamed SSR). `"entry"` only injects it into `entry.client.*` modules. `false` disables the runtime (markers only). |
@@ -327,6 +341,19 @@ Anything not in the table is treated as a command name and launched with `<file>
 The plugin's endpoints only accept files inside the Vite project root — requests handed to Vite's endpoint in `editor: "auto"` mode are validated by the plugin before Vite sees them — and the command runs on the **dev-server machine**, exactly like `launch-editor`. If your dev server runs in a container, WSL or over SSH, use the function form (e.g. POST to a helper on your machine) or `editor: "auto"` with `LAUNCH_EDITOR` pointing at a wrapper script.
 
 If the editor cannot be launched, the terminal receives the error and a toast in the browser shows the full `path:line:column` so you can copy it.
+
+### Open in a specific IDE per row
+
+`clickActions` can open a specific IDE per row, independent of `editor`:
+
+```ts
+tabToComponents({
+  editor: "auto", // still used by the plain "open" row
+  clickActions: ["open", "open-code", "open-cursor", "open-webstorm", "open-trae"],
+});
+```
+
+Each `open-*` action launches its own IDE on the dev-server machine: `"open-code"` → `code` and `"open-cursor"` → `cursor` (VS Code-family arguments), `"open-webstorm"` → `webstorm` (JetBrains arguments: `--line <line> --column <column> <file>`), and `"open-trae"` → `trae` (VS Code-family arguments, `-r -g <file>:<line>:<column>`). They do not read `editor` — the plain `"open"` row is the one that follows it, including `editor: "auto"` — and each command must be runnable from the dev-server machine (on `PATH`, or reachable as that command). If an IDE is missing, the terminal logs the failure and the toast shows the `path:line:column` to copy.
 
 ---
 
@@ -428,7 +455,7 @@ Nothing is injected. The plugin is `apply: "serve"`, and every hook independentl
 
 - **`array.map()` rows** open the JSX inside the callback — the only location that exists in the source — not the row's data.
 - **MDX and pre-compiled dependencies** are not instrumented; the component chain still includes the app-level usages that render them.
-- **React Server Components** (`react-router/rsc`) are best-effort in 0.1: markers work, the overlay is client-only.
+- **React Server Components** (`react-router/rsc`) are best-effort: markers work, the overlay is client-only.
 - **Astro** markers cover React/JSX modules in hydrated islands; `.astro` markup itself is not instrumented.
 - **Vike** is supported with the `vike-react` renderer on React 19 only; React 18 is outside its peer range.
 - **RedwoodJS classic**, **Waku** and **Shopify Hydrogen** are not separately tested: Redwood classic is upstream-blocked by Vite 5, Waku is still pre-1.0, and Hydrogen follows the React Router 7 row.

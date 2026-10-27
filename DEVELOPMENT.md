@@ -58,7 +58,7 @@ traceable to a commit:
 1. Bump `version` in `packages/tab-to-components/package.json` and
    `src/version.ts` together (a unit test asserts they match) and add the
    changelog entry.
-2. Commit, then tag the commit: `git tag -a v0.4.1 -m "v0.4.1"`.
+2. Commit, then tag the commit: `git tag -a v0.5.0 -m "v0.5.0"`.
 3. Push the commit and the tag. CI runs, then the release workflow builds,
    verifies the package and publishes with npm provenance.
 

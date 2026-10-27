@@ -247,3 +247,253 @@ describe("editor: 'auto' delegates to Vite / launch-editor", () => {
     expect(response.status).toBe(400);
   });
 });
+
+function writeRecordingShim(binDir: string, name: string, logPath: string): void {
+  if (process.platform === "win32") {
+    fs.writeFileSync(
+      path.join(binDir, `${name}.cmd`),
+      `@echo off\r\necho %*>>"${logPath}"\r\n`,
+      "utf8",
+    );
+    return;
+  }
+  const script = path.join(binDir, name);
+  fs.writeFileSync(
+    script,
+    `#!/bin/sh\nprintf '%s\\n' "$*" >> "${logPath}"\n`,
+    "utf8",
+  );
+  fs.chmodSync(script, 0o755);
+}
+
+function readLog(file: string): string {
+  return fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "";
+}
+
+function occurrences(haystack: string, needle: string): number {
+  return haystack.split(needle).length - 1;
+}
+
+/** Absolute path of a playground file with forward slashes. */
+function playgroundFile(relativePath: string): string {
+  return path.join(PLAYGROUND, relativePath).replace(/\\/g, "/");
+}
+
+function playgroundMarker(
+  relativePath: string,
+  line: number,
+  column: number,
+): string {
+  return `${playgroundFile(relativePath)}:${line}:${column}`;
+}
+
+describe("per-IDE click actions", () => {
+  let server: import("vite").ViteDevServer;
+  let base: string;
+  let fakeBinDir: string;
+  let cursorLog: string;
+  let webstormLog: string;
+  let previousPath: string | undefined;
+
+  beforeAll(async () => {
+    fakeBinDir = fs.mkdtempSync(path.join(os.tmpdir(), "ttc-fake-ides-"));
+    cursorLog = path.join(fakeBinDir, "cursor.log");
+    webstormLog = path.join(fakeBinDir, "webstorm.log");
+    fs.rmSync(cursorLog, { force: true });
+    fs.rmSync(webstormLog, { force: true });
+    writeRecordingShim(fakeBinDir, "cursor", cursorLog);
+    writeRecordingShim(fakeBinDir, "webstorm", webstormLog);
+
+    previousPath = process.env.PATH;
+    process.env.PATH = `${fakeBinDir}${path.delimiter}${previousPath ?? ""}`;
+
+    const { createServer } = await import("vite");
+    const reactPlugin = (await import("@vitejs/plugin-react")).default;
+    const { tabToComponents } = await import("../../src/index.js");
+    server = await createServer({
+      root: PLAYGROUND,
+      configFile: false,
+      logLevel: "error",
+      plugins: [
+        reactPlugin(),
+        tabToComponents({
+          log: false,
+          clickActions: ["open-cursor", "open-webstorm"],
+        }),
+      ],
+      server: { port: 0, strictPort: false, host: "127.0.0.1" },
+    });
+    await server.listen();
+    base = server.resolvedUrls?.local?.[0] as string;
+  });
+
+  afterAll(async () => {
+    await server?.close();
+    if (previousPath === undefined) delete process.env.PATH;
+    else process.env.PATH = previousPath;
+    fs.rmSync(fakeBinDir, { recursive: true, force: true });
+  });
+
+  it("launches `cursor` with the VS Code family arguments", async () => {
+    const expected = playgroundMarker("src/App.tsx", 20, 9);
+    const response = await fetch(
+      new URL(
+        `/__ttc/open-in-editor?file=${encodeURIComponent(expected)}&ide=cursor`,
+        base,
+      ),
+    );
+    expect(response.status).toBe(200);
+
+    await waitFor(() => readLog(cursorLog).includes(expected));
+    const log = readLog(cursorLog);
+    expect(log).toContain("-r");
+    expect(log).toContain("-g");
+    expect(log).toContain(expected);
+  });
+
+  it("launches `webstorm` with the JetBrains line/column arguments", async () => {
+    const file = playgroundFile("src/App.tsx");
+    const expected = `${file}:20:9`;
+    const response = await fetch(
+      new URL(
+        `/__ttc/open-in-editor?file=${encodeURIComponent(expected)}&ide=webstorm`,
+        base,
+      ),
+    );
+    expect(response.status).toBe(200);
+
+    await waitFor(() => readLog(webstormLog).includes(file));
+    const log = readLog(webstormLog);
+    expect(log).toContain("--line 20 --column 9");
+    expect(log).toContain(file);
+  });
+
+  it("rejects an ide id the plugin does not handle", async () => {
+    const file = playgroundFile("src/App.tsx");
+    const response = await fetch(
+      new URL(
+        `/__ttc/open-in-editor?file=${encodeURIComponent(`${file}:20:9`)}&ide=phpstorm`,
+        base,
+      ),
+    );
+    expect(response.status).toBe(400);
+    await expect(response.text()).resolves.toContain("invalid `ide`");
+  });
+
+  it("rejects a known IDE that is not in clickActions", async () => {
+    const file = playgroundFile("src/App.tsx");
+    const response = await fetch(
+      new URL(
+        `/__ttc/open-in-editor?file=${encodeURIComponent(`${file}:20:9`)}&ide=trae`,
+        base,
+      ),
+    );
+    expect(response.status).toBe(400);
+    await expect(response.text()).resolves.toContain("invalid `ide`");
+  });
+
+  it("launches two different IDEs for the same file", async () => {
+    const file = playgroundFile("src/main.tsx");
+    const expected = `${file}:1:1`;
+    const target = `/__ttc/open-in-editor?file=${encodeURIComponent(expected)}`;
+
+    const cursorResponse = await fetch(new URL(`${target}&ide=cursor`, base));
+    expect(cursorResponse.status).toBe(200);
+    const webstormResponse = await fetch(
+      new URL(`${target}&ide=webstorm`, base),
+    );
+    expect(webstormResponse.status).toBe(200);
+
+    await waitFor(
+      () =>
+        readLog(cursorLog).includes(expected) &&
+        readLog(webstormLog).includes(file),
+    );
+    expect(occurrences(readLog(cursorLog), expected)).toBe(1);
+    expect(occurrences(readLog(webstormLog), file)).toBe(1);
+  });
+
+  it("coalesces duplicate requests for the same IDE and file", async () => {
+    const file = playgroundFile("src/components/Button.tsx");
+    const expected = `${file}:1:1`;
+    const target = `/__ttc/open-in-editor?file=${encodeURIComponent(expected)}&ide=cursor`;
+
+    const [first, second] = await Promise.all([
+      fetch(new URL(target, base)),
+      fetch(new URL(target, base)),
+    ]);
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+
+    await waitFor(() => readLog(cursorLog).includes(expected));
+    expect(occurrences(readLog(cursorLog), expected)).toBe(1);
+  });
+});
+
+describe("editor: 'auto' handles per-IDE click actions itself", () => {
+  let server: import("vite").ViteDevServer;
+  let base: string;
+  let fakeBinDir: string;
+  let cursorLog: string;
+  let codeLog: string;
+  let previousPath: string | undefined;
+
+  beforeAll(async () => {
+    fakeBinDir = fs.mkdtempSync(path.join(os.tmpdir(), "ttc-auto-ide-"));
+    cursorLog = path.join(fakeBinDir, "cursor.log");
+    codeLog = path.join(fakeBinDir, "code.log");
+    fs.rmSync(cursorLog, { force: true });
+    fs.rmSync(codeLog, { force: true });
+    writeRecordingShim(fakeBinDir, "cursor", cursorLog);
+    // Also shim `code`, so a request that wrongly falls through to Vite's
+    // launch-editor cannot open the developer's real VS Code.
+    writeRecordingShim(fakeBinDir, "code", codeLog);
+
+    previousPath = process.env.PATH;
+    process.env.PATH = `${fakeBinDir}${path.delimiter}${previousPath ?? ""}`;
+
+    const { createServer } = await import("vite");
+    const reactPlugin = (await import("@vitejs/plugin-react")).default;
+    const { tabToComponents } = await import("../../src/index.js");
+    server = await createServer({
+      root: PLAYGROUND,
+      configFile: false,
+      logLevel: "error",
+      plugins: [
+        reactPlugin(),
+        tabToComponents({
+          log: false,
+          editor: "auto",
+          clickActions: ["open-cursor"],
+        }),
+      ],
+      server: { port: 0, strictPort: false, host: "127.0.0.1" },
+    });
+    await server.listen();
+    base = server.resolvedUrls?.local?.[0] as string;
+  });
+
+  afterAll(async () => {
+    await server?.close();
+    if (previousPath === undefined) delete process.env.PATH;
+    else process.env.PATH = previousPath;
+    fs.rmSync(fakeBinDir, { recursive: true, force: true });
+  });
+
+  it("answers the ide request itself instead of delegating to Vite", async () => {
+    const expected = playgroundMarker("src/components/Badge.tsx", 1, 1);
+    const response = await fetch(
+      new URL(
+        `/__open-in-editor?file=${encodeURIComponent(expected)}&ide=cursor`,
+        base,
+      ),
+    );
+    expect(response.status).toBe(200);
+
+    await waitFor(() => readLog(cursorLog).includes(expected));
+    expect(readLog(cursorLog)).toContain("-r");
+    expect(readLog(cursorLog)).toContain("-g");
+    // Vite's launch-editor was not involved.
+    expect(fs.existsSync(codeLog)).toBe(false);
+  });
+});

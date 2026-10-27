@@ -9,10 +9,14 @@ import {
 } from "./virtual.js";
 import {
   CUSTOM_EDITOR_ENDPOINT,
+  IDE_IDS,
   createEditorLauncher,
   editorTargetExists,
+  ideOfClickAction,
+  isIdeId,
   parseEditorFilePath,
   parseEditorTarget,
+  type IdeId,
 } from "./editor.js";
 import { VERSION } from "./version.js";
 import {
@@ -37,6 +41,10 @@ const VALID_OPEN_MODES: TabToComponentsOpenMode[] = [
 const VALID_THEMES: TabToComponentsTheme[] = ["dark", "light"];
 const VALID_CLICK_ACTIONS: TabToComponentsClickAction[] = [
   "open",
+  "open-code",
+  "open-cursor",
+  "open-webstorm",
+  "open-trae",
   "copy-file",
   "copy-path",
   "copy-full-path",
@@ -263,6 +271,30 @@ export function tabToComponents(
         },
       });
 
+  // Per-IDE actions (`open-code`, …) launch a fixed IDE on the dev-server
+  // machine, independently of `editor` — including when `editor: "auto"`
+  // delegates the plain "open" row to Vite. Only the IDEs whose action is
+  // configured are reachable through the endpoint, and their launchers are
+  // strict: a missing command answers 500 instead of a false success.
+  const configuredIdes = new Set<IdeId>();
+  for (const action of resolved.clickActions) {
+    const ide = ideOfClickAction(action);
+    if (ide !== null) configuredIdes.add(ide);
+  }
+  const ideLaunchers = new Map<IdeId, EditorLauncher>();
+  for (const ide of IDE_IDS) {
+    if (!configuredIdes.has(ide)) continue;
+    ideLaunchers.set(
+      ide,
+      createEditorLauncher(ide, {
+        strict: true,
+        onError: (message) => {
+          config?.logger.warn(`  tab-to-components: ${message}`);
+        },
+      }),
+    );
+  }
+
   function clientConfig(): ClientConfig {
     return {
       version: VERSION,
@@ -449,10 +481,10 @@ export function tabToComponents(
       const LAUNCH_WINDOW_MS = 5_000;
       const MAX_LAUNCHES_PER_WINDOW = 20;
 
-      function reserveLaunch(file: string): "launch" | "duplicate" | "limited" {
+      function reserveLaunch(key: string): "launch" | "duplicate" | "limited" {
         const now = Date.now();
-        if (inFlightTargets.has(file)) return "duplicate";
-        const last = lastLaunchAt.get(file);
+        if (inFlightTargets.has(key)) return "duplicate";
+        const last = lastLaunchAt.get(key);
         if (last !== undefined && now - last < MIN_LAUNCH_INTERVAL_MS) {
           return "duplicate";
         }
@@ -464,8 +496,8 @@ export function tabToComponents(
         }
         if (recentLaunches.length >= MAX_LAUNCHES_PER_WINDOW) return "limited";
 
-        inFlightTargets.add(file);
-        lastLaunchAt.set(file, now);
+        inFlightTargets.add(key);
+        lastLaunchAt.set(key, now);
         recentLaunches.push(now);
         if (lastLaunchAt.size > 512) {
           for (const [key, launchedAt] of lastLaunchAt) {
@@ -483,9 +515,25 @@ export function tabToComponents(
         );
         if (!searchParams) return next();
 
+        // Per-IDE actions (`open-code`, …) send `ide`. Only a known IDE whose
+        // own action is configured may be launched; an unknown or disabled
+        // value fails closed instead of falling back to the configured editor.
+        const rawIde = searchParams.get("ide");
+        let ide: IdeId | undefined;
+        if (rawIde !== null) {
+          if (!isIdeId(rawIde) || !ideLaunchers.has(rawIde)) {
+            response.statusCode = 400;
+            response.end(
+              "tab-to-components: invalid `ide` parameter (expected one of the configured open-code, open-cursor, open-webstorm or open-trae click actions)",
+            );
+            return;
+          }
+          ide = rawIde;
+        }
+
         if (request.method !== "GET" && request.method !== "POST") {
-          // In auto mode the request belongs to Vite; leave its handling alone.
-          if (autoEditor) return next();
+          // In auto mode a plain request belongs to Vite; leave it alone.
+          if (autoEditor && ide === undefined) return next();
           response.statusCode = 405;
           response.end("tab-to-components: method not allowed");
           return;
@@ -503,7 +551,7 @@ export function tabToComponents(
 
         const rawFile = searchParams.get("file");
 
-        if (autoEditor) {
+        if (autoEditor && ide === undefined) {
           // Vite's launch-editor resolves the path with `path.resolve` and only
           // checks existence, so validate containment before delegating. A
           // legitimate request may omit the line/column suffix.
@@ -527,7 +575,19 @@ export function tabToComponents(
           return;
         }
 
-        const reservation = reserveLaunch(target.file);
+        const launcher =
+          ide === undefined ? editorLauncher : ideLaunchers.get(ide);
+        if (launcher === undefined) {
+          // Unreachable: the `ide` branch above only admits configured IDEs.
+          response.statusCode = 400;
+          response.end("tab-to-components: no editor is configured for this request");
+          return;
+        }
+
+        // Different IDEs may legitimately open the same file at once, so the
+        // coalescing key includes the IDE (and `"editor"` for a plain open).
+        const launchKey = `${ide ?? "editor"}\u0000${target.file}`;
+        const reservation = reserveLaunch(launchKey);
         if (reservation === "limited") {
           response.statusCode = 429;
           response.end(
@@ -542,7 +602,7 @@ export function tabToComponents(
         }
 
         Promise.resolve()
-          .then(() => editorLauncher(target))
+          .then(() => launcher(target))
           .then(() => {
             if (!response.writableEnded) {
               response.statusCode = 200;
@@ -550,17 +610,20 @@ export function tabToComponents(
             }
           })
           .catch((error: unknown) => {
+            const message =
+              error instanceof Error ? error.message : String(error);
+            server.config.logger.warn(
+              `  tab-to-components: could not open the editor: ${message}`,
+            );
             if (!response.writableEnded) {
               response.statusCode = 500;
               response.end(
-                `tab-to-components: could not open the editor: ${
-                  error instanceof Error ? error.message : String(error)
-                }`,
+                `tab-to-components: could not open the editor: ${message}`,
               );
             }
           })
           .finally(() => {
-            inFlightTargets.delete(target.file);
+            inFlightTargets.delete(launchKey);
           });
       });
     },

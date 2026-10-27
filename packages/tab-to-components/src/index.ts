@@ -3,14 +3,19 @@ export { VERSION } from "./version.js";
 export { CLIENT_VIRTUAL_ID } from "./virtual.js";
 export {
   CUSTOM_EDITOR_ENDPOINT,
+  IDE_IDS,
   createEditorLauncher,
   editorNameOf,
   editorTargetExists,
+  ideOfClickAction,
+  isIdeId,
   parseEditorTarget,
   presetEditorArgs,
   resolveEditorInvocation,
   splitCommandLine,
+  type CreateEditorLauncherOptions,
   type EditorCommand,
+  type IdeId,
 } from "./editor.js";
 export {
   DEFAULT_CLICK_ACTIONS,

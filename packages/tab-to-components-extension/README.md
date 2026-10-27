@@ -183,11 +183,24 @@ world so it can use `chrome.storage`, the clipboard and `chrome.runtime`.
 | Requires dev source maps | React 19 only | no |
 
 The two can be used together: when the plugin's overlay is detected the
-extension stays idle (override with `showWhenVitePluginActive`). With the plugin
-installed as `overlay: false` (markers only), the extension uses the plugin's
-exact markers and still provides its own UI.
+extension stays idle (override with `showWhenVitePluginActive`, which also hides
+the plugin's overlay). With the plugin installed as `overlay: false` (markers
+only), the extension uses the plugin's exact markers and still provides its own
+UI.
 
 ## Troubleshooting
+
+**"Nothing happens" on an app that also uses the Vite plugin.**
+The popup says *"Vite plugin overlay active (idle)"*. That is by design: the
+extension yields to the plugin's overlay, and the plugin's Alt+click asks the
+**dev server** to launch the editor. If that does not open your IDE (or the dev
+server runs in Docker/WSL), either:
+
+- click **"Take over from the Vite plugin"** in the extension popup (it hides
+  the plugin overlay and opens `vscode://` on this machine), or
+- set `overlay: false` in the plugin options (`tabToComponents({ overlay:
+  false })`) so only the extension provides the UI, or
+- enable **Options → Advanced → Take over from the Vite plugin overlay**.
 
 **Nothing happens.**
 The page must be a loopback dev server (`localhost`, `127.0.0.1`, `[::1]`) and a

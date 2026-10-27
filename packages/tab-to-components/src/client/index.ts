@@ -12,16 +12,25 @@ import { install } from "./install";
 
 export type { SourceActionCopy } from "./actions";
 export {
+  IDE_LABELS,
   sourceActionCopy,
   sourceActionDetail,
   sourceActionIcon,
+  sourceActionIde,
   sourceActionLabel,
 } from "./actions";
 export type { ChainEntry } from "./chain";
 export { entryFromElement, getComponentChain, nearestComponentEntry, pickPrimaryEntry } from "./chain";
 export type { ClipboardLike, CopyTextOptions } from "./clipboard";
 export { copyText } from "./clipboard";
-export type { ClickAction, ClientConfig, ModifierKey, OpenMode, ThemeMode } from "./config";
+export type {
+  ClickAction,
+  ClientConfig,
+  EditorIde,
+  ModifierKey,
+  OpenMode,
+  ThemeMode,
+} from "./config";
 export { DEFAULT_CLICK_ACTIONS, DEFAULT_CONFIG, resolveConfig } from "./config";
 export type { EditorTarget, EditorUrlConfig, EditorUrlInput, FetchLike, OpenInEditorOptions } from "./editor";
 export {

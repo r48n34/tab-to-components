@@ -6,7 +6,7 @@
  * surfaced to the caller so it can show a toast the developer can copy from.
  */
 
-import type { ClientConfig } from "./config";
+import { IDE_LABELS, type ClientConfig, type EditorIde } from "./config";
 import { formatMarker, isSafeSourceFile, type SourceMarker } from "./marker";
 
 /** A concrete editor request: the URL to hit plus the path it refers to. */
@@ -29,6 +29,11 @@ export type FetchLike = (input: string) => Promise<unknown>;
 export interface OpenInEditorOptions {
   /** Override the global `fetch` (tests, or exotic environments). */
   fetchImpl?: FetchLike;
+  /**
+   * IDE a per-IDE click action opens (`open-code`, …). Omitted for the plain
+   * `open` action, which asks the dev server for its configured editor.
+   */
+  ide?: EditorIde | null;
   /** Called instead of throwing whenever the editor could not be opened. */
   onError?: (message: string, target: EditorTarget) => void;
 }
@@ -58,28 +63,36 @@ export function resolveEditorPath(
 }
 
 /**
- * Build the GET URL for Vite's built-in open-in-editor endpoint:
+ * Build the GET URL for the editor endpoint:
  *
  *   base + editorEndpoint + "?file=" + encodeURIComponent(root + "/" + relPath + ":line:column")
  *
- * No extra query parameters: the e2e harness asserts on this exact string.
+ * A per-IDE action appends `&ide=<code|cursor|webstorm|trae>`; the plain `open`
+ * action sends no extra query parameters (the e2e harness asserts on that
+ * exact string).
  */
-export function buildEditorUrl(entry: EditorUrlInput, config: EditorUrlConfig): string {
+export function buildEditorUrl(
+  entry: EditorUrlInput,
+  config: EditorUrlConfig,
+  ide: EditorIde | null = null,
+): string {
   const base = config.base.endsWith("/") ? config.base : `${config.base}/`;
   const endpoint = config.editorEndpoint.replace(/^\/+/, "");
-  return `${base}${endpoint}?file=${encodeURIComponent(resolveEditorPath(entry, config))}`;
+  const url = `${base}${endpoint}?file=${encodeURIComponent(resolveEditorPath(entry, config))}`;
+  return ide === null ? url : `${url}&ide=${ide}`;
 }
 
 /**
- * Compose the request sent to Vite's open-in-editor endpoint. Kept as a
+ * Compose the request sent to the editor endpoint. Kept as a
  * `(config, marker)` helper for the overlay's own call sites.
  */
 export function resolveEditorTarget(
   config: ClientConfig,
   marker: SourceMarker,
+  ide: EditorIde | null = null,
 ): EditorTarget {
   return {
-    url: buildEditorUrl(marker, config),
+    url: buildEditorUrl(marker, config, ide),
     fullPath: resolveEditorPath(marker, config),
   };
 }
@@ -124,7 +137,10 @@ export async function openInEditor(
   marker: SourceMarker,
   options: OpenInEditorOptions = {},
 ): Promise<boolean> {
-  const target = resolveEditorTarget(config, marker);
+  const ide = options.ide ?? null;
+  const target = resolveEditorTarget(config, marker, ide);
+  // `in VS Code` for a per-IDE action, `editor` for the configured editor.
+  const subject = ide === null ? "editor" : `in ${IDE_LABELS[ide]}`;
   if (!isValidSourceMarker(marker)) {
     options.onError?.(
       `Refused to open an invalid source location: ${formatMarker(marker)}. ` +
@@ -138,7 +154,7 @@ export async function openInEditor(
 
   if (!fetchImpl) {
     options.onError?.(
-      `Could not open editor (fetch unavailable). Copy: ${target.fullPath}`,
+      `Could not open ${subject} (fetch unavailable). Copy: ${target.fullPath}`,
       target,
     );
     return false;
@@ -147,12 +163,12 @@ export async function openInEditor(
   try {
     const response = await fetchImpl(target.url);
     if (isOkResponse(response)) return true;
-    options.onError?.(`Could not open editor. Copy: ${target.fullPath}`, target);
+    options.onError?.(`Could not open ${subject}. Copy: ${target.fullPath}`, target);
     return false;
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     options.onError?.(
-      `Could not open editor (${reason || "request failed"}). Copy: ${target.fullPath}`,
+      `Could not open ${subject} (${reason || "request failed"}). Copy: ${target.fullPath}`,
       target,
     );
     return false;

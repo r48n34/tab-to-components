@@ -785,10 +785,12 @@ function Options() {
             }}
           />
           <span className="check__text">
-            <span className="check__label">Run alongside the Vite plugin overlay</span>
+            <span className="check__label">Take over from the Vite plugin overlay</span>
             <span className="check__detail">
               Keep the inspector active even when the Vite plugin's own overlay is on
-              the page. Off by default so the two overlays never fight.
+              the page, and hide that overlay so one Alt+click opens the source through
+              the extension. Off by default so the two overlays never fight; the other
+              option is the plugin's <code>overlay: false</code> setting.
             </span>
           </span>
         </label>

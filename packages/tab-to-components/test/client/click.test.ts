@@ -367,6 +367,86 @@ describe("source action picker", () => {
     expect(actionRows()).toHaveLength(0);
   });
 
+  it("offers the four per-IDE open actions with their own icons", () => {
+    setConfig({
+      clickActions: ["open-code", "open-cursor", "open-webstorm", "open-trae"],
+    });
+    const button = mountReactButton();
+    install();
+
+    pressAlt();
+    mouseEvent("mousemove", button, { altKey: true });
+    const { click } = altClick(button);
+    expect(click.defaultPrevented).toBe(true);
+
+    const rows = actionRows();
+    expect(rows).toHaveLength(4);
+    expect(rows.map((row) => row.textContent)).toEqual([
+      "Open in VS Code  app/routes/home.tsx:19:7",
+      "Open in Cursor  app/routes/home.tsx:19:7",
+      "Open in WebStorm  app/routes/home.tsx:19:7",
+      "Open in Trae  app/routes/home.tsx:19:7",
+    ]);
+    expect(
+      rows.map((row) =>
+        row.querySelector(".ttc-menu-icon")?.getAttribute("data-icon"),
+      ),
+    ).toEqual([
+      "open-code",
+      "open-cursor",
+      "open-webstorm",
+      "open-trae",
+    ]);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("opens the picked IDE through the editor endpoint", async () => {
+    setConfig({
+      clickActions: ["open-code", "open-cursor", "open-webstorm", "open-trae"],
+    });
+    const button = mountReactButton();
+    install();
+
+    pressAlt();
+    mouseEvent("mousemove", button, { altKey: true });
+    altClick(button);
+    clickRow(rowWithLabel("Open in Cursor"));
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "/__open-in-editor?file=D%3A%2Fproj%2Fapp%2Froutes%2Fhome.tsx%3A19%3A7&ide=cursor",
+    );
+
+    const shadow = shadowRoot();
+    await vi.waitFor(() => {
+      expect(shadow.textContent ?? "").toContain(
+        "Opened <Button /> app/routes/home.tsx:19:7 in Cursor",
+      );
+    });
+  });
+
+  it("runs a single configured per-IDE action immediately, without a picker", async () => {
+    setConfig({ clickActions: ["open-trae"] });
+    const button = mountReactButton();
+    install();
+
+    pressAlt();
+    altClick(button);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "/__open-in-editor?file=D%3A%2Fproj%2Fapp%2Froutes%2Fhome.tsx%3A19%3A7&ide=trae",
+    );
+    expect(actionRows()).toHaveLength(0);
+
+    const shadow = shadowRoot();
+    await vi.waitFor(() => {
+      expect(shadow.textContent ?? "").toContain(
+        "Opened <Button /> app/routes/home.tsx:19:7 in Trae",
+      );
+    });
+  });
+
   it("runs a single configured copy action immediately, without a picker", async () => {
     setConfig({ clickActions: ["copy-file"] });
     const button = mountReactButton();

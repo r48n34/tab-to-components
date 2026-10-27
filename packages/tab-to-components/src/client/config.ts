@@ -21,10 +21,24 @@ export type OpenMode = "component" | "element" | "menu";
  */
 export type ThemeMode = "dark" | "light";
 
+/** IDE a per-IDE open action launches on the dev-server machine. */
+export type EditorIde = "code" | "cursor" | "webstorm" | "trae";
+
+/** Human name of each supported IDE (picker labels and toasts). */
+export const IDE_LABELS: Record<EditorIde, string> = {
+  code: "VS Code",
+  cursor: "Cursor",
+  webstorm: "WebStorm",
+  trae: "Trae",
+};
+
 /**
  * One row of the modifier + left-click action picker.
  *
- * - `open`: ask the dev server to open the source location in the editor.
+ * - `open`: ask the dev server to open the source location in the configured
+ *   editor.
+ * - `open-code` / `open-cursor` / `open-webstorm` / `open-trae`: ask the dev
+ *   server to open it in that specific IDE, regardless of the `editor` option.
  * - `copy-file`: copy the bare file name (`MyBox.tsx`).
  * - `copy-path`: copy the project-relative path (`app/components/MyBox.tsx`).
  * - `copy-full-path`: copy the absolute path (`D:/proj/app/components/MyBox.tsx`).
@@ -32,6 +46,10 @@ export type ThemeMode = "dark" | "light";
  */
 export type ClickAction =
   | "open"
+  | "open-code"
+  | "open-cursor"
+  | "open-webstorm"
+  | "open-trae"
   | "copy-file"
   | "copy-path"
   | "copy-full-path"
@@ -88,6 +106,10 @@ const OPEN_MODES: readonly OpenMode[] = ["component", "element", "menu"];
 const THEMES: readonly ThemeMode[] = ["dark", "light"];
 const CLICK_ACTIONS: readonly ClickAction[] = [
   "open",
+  "open-code",
+  "open-cursor",
+  "open-webstorm",
+  "open-trae",
   "copy-file",
   "copy-path",
   "copy-full-path",

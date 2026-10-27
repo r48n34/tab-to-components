@@ -9,12 +9,16 @@ import {
   editorNameOf,
   editorTargetExists,
   escapeWindowsCommandArgument,
+  IDE_IDS,
+  ideOfClickAction,
+  isIdeId,
   parseEditorFilePath,
   parseEditorTarget,
   presetEditorArgs,
   resolveEditorInvocation,
   splitCommandLine,
   createEditorLauncher,
+  type IdeId,
 } from "../src/editor.js";
 import type { EditorTarget } from "../src/types.js";
 
@@ -118,6 +122,56 @@ describe("presetEditorArgs", () => {
   it("returns undefined for unknown editors", () => {
     expect(presetEditorArgs("pi", TARGET)).toBeUndefined();
     expect(presetEditorArgs("my-ide", TARGET)).toBeUndefined();
+  });
+});
+
+describe("IDE ids and click actions", () => {
+  it("lists exactly the four supported IDE ids", () => {
+    expect(IDE_IDS).toEqual(["code", "cursor", "webstorm", "trae"]);
+  });
+
+  it("recognises every IDE id and nothing else", () => {
+    for (const ide of ["code", "cursor", "webstorm", "trae"] as IdeId[]) {
+      expect(isIdeId(ide), ide).toBe(true);
+    }
+    for (const value of [
+      "phpstorm",
+      "open-cursor",
+      "auto",
+      "Cursor",
+      "",
+      " code",
+      null,
+      undefined,
+      42,
+      {},
+    ]) {
+      expect(isIdeId(value), String(value)).toBe(false);
+    }
+  });
+
+  it("maps each per-IDE click action to its IDE", () => {
+    const mapping: Record<string, IdeId | null> = {
+      "open": null,
+      "open-code": "code",
+      "open-cursor": "cursor",
+      "open-webstorm": "webstorm",
+      "open-trae": "trae",
+      "copy-file": null,
+      "copy-path": null,
+      "copy-full-path": null,
+      "copy-location": null,
+    };
+    for (const [action, expected] of Object.entries(mapping)) {
+      expect(
+        ideOfClickAction(action as Parameters<typeof ideOfClickAction>[0]),
+        action,
+      ).toBe(expected);
+    }
+  });
+
+  it("returns null for an action that is not a known click action", () => {
+    expect(ideOfClickAction("open-phpstorm" as never)).toBeNull();
   });
 });
 
@@ -328,6 +382,30 @@ describe("createEditorLauncher", () => {
     expect(errors).toHaveLength(1);
     expect(errors[0]).toContain("Could not resolve the editor command");
     expect(errors[0]).toContain("non-empty");
+  });
+
+  it("rejects a missing command when strict, but reports it through onError otherwise", async () => {
+    // No such binary can be installed: the strict launcher must surface the
+    // resolution/spawn failure instead of swallowing it, so the endpoint can
+    // answer 500.
+    const missing = "ttc-editor-that-does-not-exist-7f3c";
+    const strictLauncher = createEditorLauncher(missing, { strict: true });
+    await expect(
+      Promise.resolve().then(() => strictLauncher(TARGET)),
+    ).rejects.toThrow();
+
+    // Non-strict launchers stay fire-and-forget and report the failure through
+    // their callback. An empty editor string fails during resolution on every
+    // platform, which keeps this half of the test platform-neutral.
+    const errors: string[] = [];
+    const lenientLauncher = createEditorLauncher("", {
+      onError: (message) => errors.push(message),
+    });
+    await expect(
+      Promise.resolve().then(() => lenientLauncher(TARGET)),
+    ).resolves.toBeUndefined();
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain("Could not resolve the editor command");
   });
 });
 

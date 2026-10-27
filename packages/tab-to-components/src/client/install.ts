@@ -8,9 +8,11 @@
  */
 
 import {
+  IDE_LABELS,
   sourceActionCopy,
   sourceActionDetail,
   sourceActionIcon,
+  sourceActionIde,
   sourceActionLabel,
 } from "./actions";
 import {
@@ -209,13 +211,16 @@ export function install(userConfig?: Partial<ClientConfig> | null): () => void {
     });
   }
 
-  function openEntry(entry: ChainEntry): void {
+  function openEntry(entry: ChainEntry, action: ClickAction = "open"): void {
+    const ide = sourceActionIde(action);
     void openInEditor(config, entry.marker, {
+      ide,
       onError: (message) => overlay.showToast(message, { error: true, duration: 4000 }),
     }).then((opened) => {
       if (!opened) return;
+      const inIde = ide === null ? "" : ` in ${IDE_LABELS[ide]}`;
       overlay.showToast(
-        `Opened ${formatNameLabel(entry.name)} ${formatMarker(entry.marker)}`,
+        `Opened ${formatNameLabel(entry.name)} ${formatMarker(entry.marker)}${inIde}`,
       );
     });
   }
@@ -236,8 +241,8 @@ export function install(userConfig?: Partial<ClientConfig> | null): () => void {
   }
 
   function runAction(action: ClickAction, entry: ChainEntry): void {
-    if (action === "open") {
-      openEntry(entry);
+    if (action === "open" || sourceActionIde(action) !== null) {
+      openEntry(entry, action);
       return;
     }
     copyEntryValue(action, entry);

@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,6 +8,7 @@ import type {
   EditorLauncher,
   EditorOption,
   EditorTarget,
+  TabToComponentsClickAction,
 } from "./types.js";
 
 /** Default endpoint used when a custom `editor` is configured. */
@@ -59,6 +60,38 @@ const PLACEHOLDER_RE = /\{(file|line|column)\}/g;
 export interface EditorCommand {
   command: string;
   args: string[];
+}
+
+/** IDE a per-IDE click action launches on the dev-server machine. */
+export const IDE_IDS = ["code", "cursor", "webstorm", "trae"] as const;
+
+/** One IDE handled by the per-IDE click actions (`open-code`, …). */
+export type IdeId = (typeof IDE_IDS)[number];
+
+/** Whether `value` is an IDE id handled by the per-IDE click actions. */
+export function isIdeId(value: unknown): value is IdeId {
+  return typeof value === "string" && (IDE_IDS as readonly string[]).includes(value);
+}
+
+/**
+ * The IDE a click action launches, or `null` for `open` and the copy actions.
+ * The returned id is also the `ide` query parameter the browser sends.
+ */
+export function ideOfClickAction(
+  action: TabToComponentsClickAction,
+): IdeId | null {
+  switch (action) {
+    case "open-code":
+      return "code";
+    case "open-cursor":
+      return "cursor";
+    case "open-webstorm":
+      return "webstorm";
+    case "open-trae":
+      return "trae";
+    default:
+      return null;
+  }
 }
 
 /** `C:\\Program Files\\Code\\Code.exe` / `code.cmd` → `code`. */
@@ -349,10 +382,35 @@ export function createWindowsSpawnPlan(
   };
 }
 
+/** Options for {@link createEditorLauncher}. */
+export interface CreateEditorLauncherOptions {
+  /** Called instead of throwing whenever the editor could not be launched. */
+  onError?: (message: string) => void;
+  /**
+   * Reject (or throw) instead of reporting through `onError` when the editor
+   * command cannot be resolved or spawned. The dev-server endpoint uses this
+   * for the per-IDE click actions, so the browser gets a real failure (and a
+   * "could not open in <IDE>" toast) instead of a false success.
+   */
+  strict?: boolean;
+}
+
+/**
+ * Resolve once the editor process started, or reject with its spawn error.
+ * Only used by strict launchers; non-strict launchers stay fire-and-forget.
+ */
+function awaitSpawn(child: ChildProcess): Promise<void> {
+  return new Promise((resolve, reject) => {
+    child.once("spawn", () => resolve());
+    child.once("error", (error) => reject(error));
+  });
+}
+
 function spawnDetached(
   command: EditorCommand,
   onError?: (message: string) => void,
-): void {
+  strict = false,
+): void | Promise<void> {
   const { command: file } = command;
   try {
     if (process.platform === "win32") {
@@ -367,6 +425,11 @@ function spawnDetached(
         windowsHide: true,
         windowsVerbatimArguments: plan.windowsVerbatimArguments,
       });
+      if (strict) {
+        const started = awaitSpawn(child);
+        child.unref();
+        return started;
+      }
       child.on("error", (error) => {
         onError?.(`Could not launch "${file}": ${error.message}`);
       });
@@ -377,11 +440,17 @@ function spawnDetached(
       stdio: "ignore",
       detached: true,
     });
+    if (strict) {
+      const started = awaitSpawn(child);
+      child.unref();
+      return started;
+    }
     child.on("error", (error) => {
       onError?.(`Could not launch "${file}": ${error.message}`);
     });
     child.unref();
   } catch (error) {
+    if (strict) throw error;
     onError?.(
       `Could not launch "${file}": ${error instanceof Error ? error.message : String(error)}`,
     );
@@ -392,14 +461,19 @@ function spawnDetached(
 /**
  * Turn the `editor` option into a launcher the dev server can call.
  * Failures are reported through `onError` (the plugin logs them) and never
- * thrown back into the middleware.
+ * thrown back into the middleware, unless the launcher is `strict`.
  */
 export function createEditorLauncher(
   editor: EditorOption,
-  options: { onError?: (message: string) => void } = {},
+  options: CreateEditorLauncherOptions = {},
 ): EditorLauncher {
   if (typeof editor === "function") {
     return async (target) => {
+      if (options.strict) {
+        // Let the endpoint answer 500 with the real failure.
+        await editor(target);
+        return;
+      }
       try {
         await editor(target);
       } catch (error) {
@@ -413,8 +487,13 @@ export function createEditorLauncher(
   }
   return (target) => {
     try {
-      spawnDetached(resolveEditorInvocation(editor, target), options.onError);
+      return spawnDetached(
+        resolveEditorInvocation(editor, target),
+        options.onError,
+        options.strict === true,
+      );
     } catch (error) {
+      if (options.strict) throw error;
       options.onError?.(
         `Could not resolve the editor command: ${
           error instanceof Error ? error.message : String(error)

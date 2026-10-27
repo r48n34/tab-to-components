@@ -24,6 +24,33 @@ export const EXT_ATTRIBUTE = "data-ttc-ext";
 /** Highest practical z-index (2^31 - 1). */
 export const UI_Z_INDEX = "2147483647";
 
+/** Selector for the Vite plugin's overlay host (the extension's is excluded). */
+export const FOREIGN_PLUGIN_OVERLAY_SELECTOR = `[${UI_ATTRIBUTE}]:not([${EXT_ATTRIBUTE}])`;
+
+const PLUGIN_OVERLAY_STYLE_ID = "ttc-ext-hide-plugin-overlay";
+
+/**
+ * Hide the Vite plugin's own overlay while the extension provides the UI.
+ *
+ * Used when the developer asked the extension to run even though the plugin's
+ * overlay is on the page: the plugin would otherwise draw a second outline /
+ * menu for the same element. A single `!important` style sheet covers hosts
+ * that are added later, and the plugin's own inline `display` cannot beat it.
+ * Never touches the extension's host (it carries `data-ttc-ext`).
+ */
+export function setForeignPluginOverlayHidden(doc: Document, hidden: boolean): void {
+  const existing = doc.getElementById(PLUGIN_OVERLAY_STYLE_ID);
+  if (!hidden) {
+    existing?.remove();
+    return;
+  }
+  if (existing !== null) return;
+  const style = doc.createElement("style");
+  style.id = PLUGIN_OVERLAY_STYLE_ID;
+  style.textContent = `${FOREIGN_PLUGIN_OVERLAY_SELECTOR} { display: none !important; }`;
+  (doc.head ?? doc.documentElement).append(style);
+}
+
 const FONT_STACK =
   'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace';
 

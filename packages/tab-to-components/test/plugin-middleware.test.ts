@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   afterEach,
@@ -99,6 +102,24 @@ function configureForLog(
   const server = fakeServer(logger);
   plugin.configureServer?.(server as never);
   return { logger, use: server.middlewares.use };
+}
+
+/**
+ * Like {@link createHarness}, but leaves the `editor` option at its default:
+ * the per-IDE actions must launch their own IDE instead of the configured
+ * editor, so the harness must not inject a custom launcher.
+ */
+function createIdeHarness(
+  options: Parameters<typeof tabToComponents>[0] = {},
+): { handler: AnyFn; logger: FakeLogger } {
+  const logger = fakeLogger();
+  const plugin = tabToComponents({ log: false, ...options }) as unknown as TestPlugin;
+  plugin.configResolved?.(resolvedConfig(logger));
+  const server = fakeServer(logger);
+  plugin.configureServer?.(server as never);
+  const handler = server.middlewares.use.mock.calls[0]?.[0] as AnyFn | undefined;
+  if (!handler) throw new Error("editor middleware was not registered");
+  return { handler, logger };
 }
 
 async function invoke(
@@ -567,5 +588,82 @@ describe("editor: 'auto' containment", () => {
 
     expect(result.status).toBe(403);
     expect(result.next).toBe(false);
+  });
+});
+
+describe("per-IDE click actions", () => {
+  it("rejects an unknown ide with a 400", async () => {
+    const { handler } = createIdeHarness({ clickActions: ["open-cursor"] });
+
+    const result = await invoke(
+      handler,
+      `${editorUrl(SOURCE_MARKER)}&ide=bogus`,
+    );
+
+    expect(result.next).toBe(false);
+    expect(result.status).toBe(400);
+    expect(result.body).toContain("invalid `ide`");
+  });
+
+  it("rejects a known IDE that the clickActions config does not include", async () => {
+    // Defaults are ["open", "copy-file", "copy-full-path"]: no per-IDE action.
+    const { handler } = createIdeHarness();
+
+    for (const ide of ["code", "cursor", "webstorm", "trae"]) {
+      const result = await invoke(
+        handler,
+        `${editorUrl(SOURCE_MARKER)}&ide=${ide}`,
+      );
+      expect(result.next, ide).toBe(false);
+      expect(result.status, ide).toBe(400);
+      expect(result.body, ide).toContain("invalid `ide`");
+    }
+  });
+
+  it("returns a 500 when the configured IDE command is missing from PATH", async () => {
+    const { handler } = createIdeHarness({ clickActions: ["open-cursor"] });
+
+    const emptyBinDir = fs.mkdtempSync(path.join(os.tmpdir(), "ttc-empty-bin-"));
+    const previousPath = process.env.PATH;
+    const previousPathext = process.env.PATHEXT;
+    try {
+      // Never trust the machine's real PATH: a developer with Cursor installed
+      // would otherwise launch the real IDE from this test.
+      process.env.PATH = emptyBinDir;
+      if (process.platform === "win32") {
+        process.env.PATHEXT = ".COM;.EXE;.BAT;.CMD";
+      }
+
+      const result = await invoke(
+        handler,
+        `${editorUrl(SOURCE_MARKER)}&ide=cursor`,
+      );
+
+      expect(result.next).toBe(false);
+      expect(result.status).toBe(500);
+      expect(result.body).toContain("could not open the editor");
+    } finally {
+      if (previousPath === undefined) delete process.env.PATH;
+      else process.env.PATH = previousPath;
+      if (previousPathext === undefined) delete process.env.PATHEXT;
+      else process.env.PATHEXT = previousPathext;
+      fs.rmSync(emptyBinDir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps launching the configured editor for a request without an ide", async () => {
+    const targets: EditorTarget[] = [];
+    const { handler } = createHarness({
+      clickActions: ["open-cursor"],
+      editor: (target) => {
+        targets.push(target);
+      },
+    });
+
+    const result = await invoke(handler, editorUrl(SOURCE_MARKER));
+
+    expect(result.next).toBe(false);
+    expect(result.status).toBe(200);
+    expect(targets).toEqual([{ file: SOURCE_FILE, line: 12, column: 3 }]);
   });
 });

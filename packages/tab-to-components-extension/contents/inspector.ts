@@ -34,9 +34,16 @@ import {
   type Settings,
   type SettingsStore,
 } from "../lib/settings";
-import { formatLocation, type SourceLocation } from "../lib/source/location";
+import {
+  formatLocation,
+  resolveAbsoluteLocation,
+  type SourceLocation,
+} from "../lib/source/location";
 import { createSourceResolver } from "../lib/source/resolve";
-import { EXT_ATTRIBUTE, UI_ATTRIBUTE } from "../lib/ui/overlay";
+import {
+  FOREIGN_PLUGIN_OVERLAY_SELECTOR,
+  setForeignPluginOverlayHidden,
+} from "../lib/ui/overlay";
 
 /**
  * Plasmo reads the `config` export statically with the TypeScript AST, which
@@ -62,11 +69,9 @@ interface InspectorGlobals {
   __TTC_EXT__?: { dispose(): void };
 }
 
-const PLUGIN_OVERLAY_SELECTOR = `[${UI_ATTRIBUTE}]:not([${EXT_ATTRIBUTE}])`;
-
 function pluginOverlayPresent(): boolean {
   try {
-    return document.querySelector(PLUGIN_OVERLAY_SELECTOR) !== null;
+    return document.querySelector(FOREIGN_PLUGIN_OVERLAY_SELECTOR) !== null;
   } catch {
     return false;
   }
@@ -131,6 +136,8 @@ async function installInspector(): Promise<(() => void) | null> {
   let controllerRoot: string | null = null;
   let disposed = false;
   let pluginOverlayNotified = false;
+  /** Whether the plugin's overlay is currently hidden by our takeover sheet. */
+  let pluginOverlayHidden = false;
 
   const limiter = new LaunchLimiter();
   const nextProbeId = createRequestIdFactory();
@@ -239,6 +246,14 @@ async function installInspector(): Promise<(() => void) | null> {
 
   function refreshController(): void {
     const enabled = effectiveEnabled();
+    // When the developer opted into running alongside the Vite plugin, take
+    // the plugin's overlay out of the page: the extension's UI is the one that
+    // opens `vscode://` on this machine, and two outlines for one element are
+    // unusable. When the extension is idle, the plugin's overlay is untouched.
+    setForeignPluginOverlayHidden(
+      document,
+      enabled && settings.showWhenVitePluginActive && pluginOverlayPresent(),
+    );
     if (!enabled) {
       stopController();
       sendConfig();
@@ -339,14 +354,28 @@ async function installInspector(): Promise<(() => void) | null> {
         pluginOverlayNotified = true;
         // eslint-disable-next-line no-console
         console.debug(
-          "[tab-to-components] Vite plugin overlay detected; the extension is idle on this page.",
+          "[tab-to-components] Vite plugin overlay detected; the extension is idle on this page. Enable \"Take over the Vite plugin overlay\" in the extension options to use this UI instead.",
         );
+      }
+      if (pluginOverlayHidden) {
+        setForeignPluginOverlayHidden(document, false);
+        pluginOverlayHidden = false;
       }
       if (inspector !== null) {
         stopController();
         sendConfig();
       }
       return;
+    }
+
+    // Running alongside the plugin: hide its overlay as soon as it appears.
+    if (
+      settings.showWhenVitePluginActive &&
+      !pluginOverlayHidden &&
+      pluginOverlayPresent()
+    ) {
+      setForeignPluginOverlayHidden(document, true);
+      pluginOverlayHidden = true;
     }
 
     inspector?.handleAgentMessage(message);
@@ -374,6 +403,10 @@ async function installInspector(): Promise<(() => void) | null> {
     }
     unwatch();
     stopController();
+    if (pluginOverlayHidden) {
+      setForeignPluginOverlayHidden(document, false);
+      pluginOverlayHidden = false;
+    }
     sendConfig();
   }
 

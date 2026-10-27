@@ -9,6 +9,10 @@ import {
 
 const ICONS: MenuIconName[] = [
   "open",
+  "open-code",
+  "open-cursor",
+  "open-webstorm",
+  "open-trae",
   "copy-file",
   "copy-path",
   "copy-full-path",

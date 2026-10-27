@@ -162,6 +162,50 @@ describe("clickActions option", () => {
     ).toEqual(["open"]);
   });
 
+  it("passes the four per-IDE open actions through in order", () => {
+    expect(
+      clientPayload(
+        createPlugin({
+          clickActions: [
+            "open-cursor",
+            "open-code",
+            "open-webstorm",
+            "open-trae",
+          ],
+        }),
+      ).clickActions,
+    ).toEqual(["open-cursor", "open-code", "open-webstorm", "open-trae"]);
+  });
+
+  it("keeps per-IDE actions ordered among the copy actions and dedupes them", () => {
+    expect(
+      clientPayload(
+        createPlugin({
+          clickActions: [
+            "open-trae",
+            "copy-file",
+            "open-trae",
+            "open-webstorm",
+            "copy-full-path",
+          ],
+        }),
+      ).clickActions,
+    ).toEqual([
+      "open-trae",
+      "copy-file",
+      "open-webstorm",
+      "copy-full-path",
+    ]);
+  });
+
+  it("drops an unknown action without resetting the known ones", () => {
+    expect(
+      clientPayload(
+        createPlugin({ clickActions: ["open-code", "sidebar"] as never }),
+      ).clickActions,
+    ).toEqual(["open-code"]);
+  });
+
   it("drops unknown actions and falls back to the defaults", () => {
     expect(
       clientPayload(createPlugin({ clickActions: ["sidebar"] as never }))

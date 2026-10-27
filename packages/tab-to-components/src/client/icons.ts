@@ -13,6 +13,10 @@ const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 /** Icon shown before one row of the component chain or source action picker. */
 export type MenuIconName =
   | "open"
+  | "open-code"
+  | "open-cursor"
+  | "open-webstorm"
+  | "open-trae"
   | "copy-file"
   | "copy-path"
   | "copy-full-path"
@@ -29,6 +33,16 @@ export const MENU_ICON_PATHS: Record<MenuIconName, readonly string[]> = {
     "M9 2.5H3.5a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1V8",
     "M8.5 7.5 14 2",
     "M10 2h4v4",
+  ],
+  // Angle brackets: jump to the source in VS Code.
+  "open-code": ["M5.5 4.5 2 8l3.5 3.5", "M10.5 4.5 14 8l-3.5 3.5"],
+  // A pointer arrow: jump to the source in Cursor.
+  "open-cursor": ["M4 2.5 11.8 7.6 8.2 8.6 6.6 12z"],
+  // A lightning bolt: jump to the source in WebStorm.
+  "open-webstorm": ["M9.5 1.8 4.2 9h3.1l-1 5.2L11.8 7H8.6z"],
+  // A four-point sparkle: jump to the source in Trae.
+  "open-trae": [
+    "M8 1.5c.7 3.2 2.3 4.8 5.5 5.5-3.2.7-4.8 2.3-5.5 5.5-.7-3.2-2.3-4.8-5.5-5.5 3.2-.7 4.8-2.3 5.5-5.5z",
   ],
   // A page with a folded corner: the file whose name is copied.
   "copy-file": [

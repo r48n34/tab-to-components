@@ -293,10 +293,23 @@ function Popup() {
               </span>
             </p>
             {status.response.pluginOverlay && !settings.showWhenVitePluginActive && (
-              <p className="status__hint">
-                tab-to-components stays idle while the Vite plugin overlay is active.
-                Allow both in Options → Advanced.
-              </p>
+              <>
+                <p className="status__hint">
+                  This app also runs the tab-to-components Vite plugin, so the
+                  extension stays idle. Take over to open sources with this
+                  machine's IDE instead of the dev server.
+                </p>
+                <button
+                  type="button"
+                  className="btn btn--primary btn--small status__retry"
+                  disabled={!loaded}
+                  onClick={() => {
+                    void persist({ ...settings, showWhenVitePluginActive: true })
+                  }}
+                >
+                  Take over from the Vite plugin
+                </button>
+              </>
             )}
             {!status.response.hasReact && (
               <p className="status__hint">

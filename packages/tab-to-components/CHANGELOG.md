@@ -5,9 +5,32 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+Upcoming feature: four per-IDE open actions for the Alt+click source action picker. Defaults, existing options and output are otherwise unchanged.
+
+### Click actions
+
+- Four new `clickActions` values open the source at `file:line:column` in a specific IDE on the dev-server machine: `"open-code"` launches `code` (VS Code), `"open-cursor"` launches `cursor`, `"open-webstorm"` launches `webstorm` and `"open-trae"` launches `trae`. WebStorm receives the JetBrains CLI arguments; the other three use the VS Code-family `-r -g <file>:<line>:<column>` arguments.
+- Each per-IDE row is independent of the `editor` option: `editor` still controls the plain `"open"` row, and `editor: "auto"` keeps working there. The IDE command must be launchable from the dev-server machine — on `PATH`, or reachable as that command; a missing IDE shows a copyable error toast such as `Could not open in WebStorm. Copy: D:/proj/app/components/MyBox.tsx:12:5` and logs the failure in the terminal.
+- No defaults or existing behavior changed: `clickActions` still defaults to `["open", "copy-file", "copy-full-path"]`, existing options, URLs, DOM attributes and toasts are unchanged, `clickActions` is still ignored for `open: "menu"`, and a single configured action still skips the picker (`clickActions: ["open-cursor"]` opens Cursor immediately).
+- Packaging: the four new menu icons and the per-IDE request path grew the minified browser runtime to 25,337 bytes (8.3 KiB gzip), so `verify:package` now enforces a 26 KiB budget for it (was 24 KiB) and a 168 KiB budget for the unpacked payload (163.6 KiB, was 160 KiB).
+- Tests and documentation were extended: unit and integration coverage for the new actions, and the config examples, action table, options table and editor section of both READMEs.
+
+## 0.5.0 - 2026-10-27
+
+Feature release: icon-led overlay menus, a wider verified compatibility matrix, and a companion Chrome extension in the monorepo. The Vite plugin's public API, options, DOM attributes and output formats are unchanged.
+
 ### Overlay
 
 - Every row of the source action picker and the component chain picker now leads with a small icon for what it acts on: an external link for **Open in IDE**, a page for **Copy file name**, a folder or a hard drive for the relative/full path, a pin for the **file:line:column** location, and a stacked box for chain rows. The icons are hand-drawn `aria-hidden` SVGs rendered inside the existing shadow root, so app CSS cannot affect them, they need no font or network request, and the rows' text content (the copy targets, toasts and e2e selectors) is unchanged.
+
+### Companion Chrome extension
+
+- New private package `packages/tab-to-components-extension` (Manifest V3, Plasmo 0.90.5) brings the Alt+click workflow to **any** local React dev server **without a Vite config or build plugin**. It reads React's runtime metadata instead of injected props: React 18 locations come from fiber `_debugSource`, and React 19 recovers them from `_debugStack` plus the dev server's source maps.
+- Vite 7/8 dev source maps carry no absolute path, so the extension also recovers the absolute file the bundler embedded in the transformed module (`_jsxFileName`, react-refresh `RefreshRuntime.register`, or esbuild's `fileName`) and derives the project root from it. “Open in IDE” therefore emits a full URL such as `vscode://file/C:/Users/me/proj/src/App.tsx:20:9` without configuring a project root. The React 19 fixtures are generated from the plugin's playground and assert the same `src/App.tsx:9:5`, `10:7` and `20:9` positions the plugin's `data-ttc` markers carry.
+- The isolated-world overlay shares the plugin's source action picker, component chain picker, copy actions, theme and keyboard model; settings live in `chrome.storage.local` under `ttc:settings:v1` and apply live. The editor is opened through IDE URL schemes (VS Code, Cursor, Windsurf, VSCodium, Zed, Sublime, experimental JetBrains, or a custom template) instead of launching a process on the dev-server machine.
+- Safety model: loopback-only host permissions (`localhost`, `127.0.0.1`, `[::1]`), same-origin source-map fetches only, shape/size validation of every agent payload, traversal and control-character path rejection, editor-scheme allowlisting, URL length caps and rate-limited launches; no `eval`, no remote code and no telemetry. The package is private and is not published to npm or the Chrome Web Store.
+- Coexists with the plugin: the extension idles when the plugin's overlay is detected (`showWhenVitePluginActive` overrides), and with the plugin installed as `overlay: false` it reuses the plugin's exact `data-ttc` markers and supplies its own UI.
+- Root scripts `dev:extension`, `build:extension`, `test:extension`, `verify:extension` and `gate:extension`, plus the plugin-free `vite.ext.config.ts` configs used by the manual Chrome QA checklist. A dedicated CI job typechecks, tests, builds the Plasmo production bundle and runs `scripts/verify-build.mjs` (manifest and bundle contract).
 
 ### Compatibility matrix
 
@@ -22,6 +45,25 @@ This project follows [Semantic Versioning](https://semver.org/).
 - **Honest matrix status:** the verified 20-cell run (10 frameworks × 2 React majors) reports **13 tested (12 works, 1 works-not-verified), 0 failing**, 3 upstream-unsupported cells and 4 not-applicable cells. The works-not-verified cell is Remix v2 on React 18, whose dev/build/SSR checks need esbuild, which this sandbox blocks. Every Browser cell is reported as ⏭ skipped, never passed: the Astro/Vike fixtures do not implement the counter + three-row action-picker contract that the Chrome e2e runner asserts, and headless Chrome could not run in this environment for any cell. The shared Runtime ✅ is the generic React fiber/Alt+click harness check, not framework-specific browser hydration.
 - `pnpm test:compat` now builds and scans the Astro and Vike fixtures, `pnpm install:compat` installs **seven** isolated fixture roots, and CI caches all seven lockfiles.
 - Documentation: both READMEs gained Astro and Vike setup snippets, a 10-framework compatibility table, the React 18/19 and `.astro` constraints, the Vite 5/RedwoodSDK/Waku/Hydrogen notes and updated reproduce commands. `docs/compatibility-matrix.md` was regenerated from the verified run's recorded JSON (package `0.4.1`) with the browser-tier provenance stated explicitly.
+
+### Tests and packaging
+
+- Unit suite: 411 tests in 20 files (one POSIX-only case is skipped on Windows), including new coverage for the menu icons, the icon-aware action rows and the icon-bearing click flow.
+- Integration suite: 31 tests in 5 files; Vite 7/8 matrix: 18 tests; compatibility matrix: 20 cells.
+- Extension: 211 tests in 16 files, including generated Vite 8 source-map fixtures with and without an absolute `file` entry, layered source resolution, fiber walking, the overlay controller, and the settings/protocol contracts.
+- `verify:package`: the packed payload grew with the icon runtime and the expanded documentation, so the unpacked-size budget was raised from 144 KiB to 160 KiB; the browser runtime must still be minified and under 24 KiB (24,068 bytes, 7.7 KiB gzip).
+
+### Documentation
+
+- The package README now cross-links the companion Chrome extension (the root README keeps the full walkthrough), and both READMEs link this changelog.
+- The extension ships its own README with load-unpacked steps, settings, editor URL presets, a manual QA checklist, troubleshooting and limitations.
+- Fixed the stale "best-effort in 0.1" React Server Components note in the limitations.
+
+### Upgrade notes
+
+- No upgrade work: `0.5.0` is a drop-in replacement for `0.4.1`.
+- The menu icons are decorative `aria-hidden` SVGs inside the existing `[data-ttc-ui]` shadow root. They add no font, sprite sheet or network request and do not change a row's text content, accessible name, copy targets, toasts or e2e selectors.
+- Options, DOM attributes (`data-ttc`, `data-ttc-name`, `data-ttc-theme`), endpoints and output formats are unchanged; dev-only output is still absent from production builds.
 
 ## 0.4.1 - 2026-10-25
 

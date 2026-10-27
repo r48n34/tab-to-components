@@ -87,6 +87,37 @@ describe("resolveConfig", () => {
     ).toEqual(["copy-file", "open", "copy-path", "copy-full-path"]);
   });
 
+  it("keeps the per-IDE open actions in order and dedupes them", () => {
+    expect(
+      resolveConfig({
+        clickActions: [
+          "open-cursor",
+          "open-code",
+          "open-webstorm",
+          "open-trae",
+        ],
+      }).clickActions,
+    ).toEqual(["open-cursor", "open-code", "open-webstorm", "open-trae"]);
+
+    expect(
+      resolveConfig({
+        clickActions: [
+          "open-trae",
+          "copy-file",
+          "open-trae",
+          "open-code",
+          "open-trae",
+        ],
+      }).clickActions,
+    ).toEqual(["open-trae", "copy-file", "open-code"]);
+  });
+
+  it("accepts a single per-IDE open action as a shorthand", () => {
+    expect(
+      resolveConfig({ clickActions: "open-webstorm" as never }).clickActions,
+    ).toEqual(["open-webstorm"]);
+  });
+
   it("drops unknown click actions and falls back to the defaults", () => {
     expect(
       resolveConfig({ clickActions: ["nope" as never] }).clickActions,
@@ -96,6 +127,13 @@ describe("resolveConfig", () => {
       "copy-file",
       "copy-full-path",
     ]);
+  });
+
+  it("drops an unknown action without resetting the known ones", () => {
+    expect(
+      resolveConfig({ clickActions: ["open-cursor", "open-sidebar"] as never })
+        .clickActions,
+    ).toEqual(["open-cursor"]);
   });
 
   it("accepts a single action as a shorthand", () => {

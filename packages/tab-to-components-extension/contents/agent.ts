@@ -305,14 +305,31 @@ function installAgent(): (() => void) | null {
     scheduleHover();
   }
 
+  /**
+   * Consume a gesture the extension is handling.
+   *
+   * `stopImmediatePropagation` also silences other capture listeners on the
+   * same window — notably the Vite plugin's own overlay when the developer runs
+   * both. Without it, both UIs would act on one Alt+click (two menus, two
+   * editor launches).
+   */
+  function consume(event: Event): void {
+    event.preventDefault();
+    event.stopPropagation();
+    try {
+      event.stopImmediatePropagation();
+    } catch {
+      // Ancestors are already blocked by stopPropagation.
+    }
+  }
+
   function onMouseDown(rawEvent: Event): void {
     if (config === null || !config.enabled) return;
     const event = rawEvent as MouseEvent;
     if (menuOpen) {
       if (isOverlayTarget(elementFromTarget(event.target))) return;
       if (event.button === 0) {
-        event.preventDefault();
-        event.stopPropagation();
+        consume(event);
         suppressNextClick = true;
         post({
           __ttc: PROTOCOL_VERSION,
@@ -328,8 +345,7 @@ function installAgent(): (() => void) | null {
     if (!isModifierHeld(event, config.keyboard)) return;
     // Suppress the page's activation only when there is something to inspect.
     if (chainFor(elementFromTarget(event.target)).length === 0) return;
-    event.preventDefault();
-    event.stopPropagation();
+    consume(event);
   }
 
   function onClick(rawEvent: Event): void {
@@ -338,8 +354,7 @@ function installAgent(): (() => void) | null {
     if (suppressNextClick) {
       suppressNextClick = false;
       if (!menuOpen) {
-        event.preventDefault();
-        event.stopPropagation();
+        consume(event);
         return;
       }
     }
@@ -352,8 +367,7 @@ function installAgent(): (() => void) | null {
         requestId: nextRequestId(),
         reason: "outside",
       });
-      event.preventDefault();
-      event.stopPropagation();
+      consume(event);
       return;
     }
     if (event.button !== 0) return;
@@ -361,8 +375,7 @@ function installAgent(): (() => void) | null {
     const target = elementFromTarget(event.target);
     const chain = chainFor(target);
     if (chain.length === 0) return;
-    event.preventDefault();
-    event.stopPropagation();
+    consume(event);
     armed = false;
     cancelHover();
     post({
@@ -383,8 +396,7 @@ function installAgent(): (() => void) | null {
     if (!isModifierHeld(event, config.keyboard)) return;
     const chain = chainFor(elementFromTarget(event.target));
     if (chain.length === 0) return;
-    event.preventDefault();
-    event.stopPropagation();
+    consume(event);
     armed = false;
     cancelHover();
     post({
