@@ -1,6 +1,6 @@
-![tab-to-components banner](https://github.com/r48n34/tab-to-components/raw/main/docs/banner-minimal-dark.jpeg)
-
 # tab-to-components
+
+![tab-to-components banner](https://github.com/r48n34/tab-to-components/raw/main/docs/banner-minimal-dark.jpeg)
 
 [![npm version](https://img.shields.io/npm/v/tab-to-components.svg)](https://www.npmjs.com/package/tab-to-components)
 [![CI](https://github.com/r48n34/tab-to-components/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/r48n34/tab-to-components/actions/workflows/ci.yml)

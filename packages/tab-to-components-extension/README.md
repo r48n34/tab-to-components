@@ -1,6 +1,6 @@
-![tab-to-components banner](https://github.com/r48n34/tab-to-components/raw/main/docs/banner-minimal-dark.jpeg)
-
 # tab-to-components — Chrome extension
+
+![tab-to-components banner](https://github.com/r48n34/tab-to-components/raw/main/docs/banner-minimal-dark.jpeg)
 
 A standalone **Manifest V3 Chrome extension** that brings the
 [tab-to-components](https://github.com/r48n34/tab-to-components) "Alt+click to
