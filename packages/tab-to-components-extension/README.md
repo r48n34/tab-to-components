@@ -1,3 +1,5 @@
+![tab-to-components banner](https://github.com/r48n34/tab-to-components/raw/main/docs/banner-minimal-dark.jpeg)
+
 # tab-to-components — Chrome extension
 
 A standalone **Manifest V3 Chrome extension** that brings the

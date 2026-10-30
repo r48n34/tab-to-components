@@ -1,3 +1,5 @@
+![tab-to-components banner](https://github.com/r48n34/tab-to-components/raw/main/docs/banner-minimal-dark.jpeg)
+
 # tab-to-components
 
 [![npm version](https://img.shields.io/npm/v/tab-to-components.svg)](https://www.npmjs.com/package/tab-to-components)
