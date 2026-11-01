@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createInspector, type InspectorDependencies } from "../lib/install";
+import { OPEN_EDITOR_REQUIRES_PLUGIN } from "../lib/plugin-editor";
 import type { AgentMessage, InspectorMessage, RawEntry } from "../lib/protocol";
 import { normalizeSettings, type Settings } from "../lib/settings";
 import type { SourceLocation } from "../lib/source/location";
@@ -68,7 +69,10 @@ interface Harness {
   dispose: () => void;
 }
 
-function createHarness(settings: Settings): Harness {
+function createHarness(
+  settings: Settings,
+  options: { canOpenInIde?: boolean } = {},
+): Harness {
   document.body.innerHTML = "";
   const postToAgent = vi.fn();
   const copy = vi.fn(async () => true);
@@ -88,6 +92,7 @@ function createHarness(settings: Settings): Harness {
     openEditor,
     copy,
     postToAgent,
+    canOpenInIde: () => options.canOpenInIde ?? true,
   };
   const inspector = createInspector(deps);
   return {
@@ -169,6 +174,7 @@ function activate(chain: RawEntry[], x = 40, y = 60): AgentMessage {
     x,
     y,
     button: 0,
+    plugin: null,
   };
 }
 
@@ -318,6 +324,7 @@ describe("inspector actions", () => {
       chain: REACT18_CHAIN,
       x: 10,
       y: 20,
+      plugin: null,
     });
     await flush();
 
@@ -335,6 +342,49 @@ describe("inspector actions", () => {
     clickRow(rows[1] as HTMLButtonElement);
     await flush();
     expect(harness.openEditor).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides Open in IDE when the page has no Vite plugin", async () => {
+    harness = createHarness(baseSettings(), { canOpenInIde: false });
+    harness.inspector.handleAgentMessage(activate(REACT18_CHAIN));
+    await flush();
+
+    expect(menuVisible("actions")).toBe(true);
+    expect(menuRows("actions").map((row) => row.querySelector(".ttc-menu-name")?.textContent)).toEqual([
+      "Copy file name",
+      "Copy full path",
+    ]);
+    expect(harness.openEditor).not.toHaveBeenCalled();
+  });
+
+  it("explains why the editor is unavailable when it is the only action", async () => {
+    harness = createHarness(baseSettings({ clickActions: ["open"] }), {
+      canOpenInIde: false,
+    });
+    harness.inspector.handleAgentMessage(activate(REACT18_CHAIN));
+    await flush();
+
+    expect(menuVisible("actions")).toBe(false);
+    expect(toastVisible()).toBe(true);
+    expect(toastText()).toBe(OPEN_EDITOR_REQUIRES_PLUGIN);
+  });
+
+  it("refuses the chain picker without the Vite plugin", async () => {
+    harness = createHarness(baseSettings(), { canOpenInIde: false });
+    harness.inspector.handleAgentMessage({
+      __ttc: 1,
+      source: "ttc-agent",
+      type: "chain-menu",
+      requestId: 4,
+      chain: REACT18_CHAIN,
+      x: 10,
+      y: 20,
+      plugin: null,
+    });
+    await flush();
+
+    expect(menuVisible("chain")).toBe(false);
+    expect(toastText()).toBe(OPEN_EDITOR_REQUIRES_PLUGIN);
   });
 
   it("reports a missing source location instead of copying", async () => {

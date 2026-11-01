@@ -19,7 +19,7 @@ See the [changelog](packages/tab-to-components/CHANGELOG.md) for release notes.
 - **Open or copy:** the Alt+click picker can open the source in your IDE or copy the file name (`MyBox.tsx`), the project-relative path, the full absolute path (`D:/proj/app/components/MyBox.tsx`), or `path:line:column` to the clipboard.
 - **Paste-ready context:** optional **Copy for AI** (target + component chain), **Copy @mention**, **Copy as Markdown** and **Copy component chain** rows, plus `customActions` templates for team-specific copy formats.
 - Never ships to production: no markers, no client code, no extra imports in `vite build`, `react-router build`, `astro build` or `vike build`.
-- **No Vite config?** A companion [Chrome extension](./packages/tab-to-components-extension) brings the same Alt+click workflow to any local React dev server.
+- **No Vite config?** A companion [Chrome extension](./packages/tab-to-components-extension) brings the same overlay, hover and copy workflow to any local React dev server; **Open in IDE** delegates to this plugin when it is installed.
 
 ## Install
 
@@ -408,20 +408,21 @@ Each `open-*` action launches its own IDE on the dev-server machine: `"open-code
 
 ---
 
-## Browser extension (Chrome, no Vite config)
+## Browser extension (Chrome)
 
 A standalone **Plasmo-based Manifest V3 Chrome extension** ports the same
-workflow to any React dev server **without touching the app's Vite config**:
+overlay, hover and copy workflow to any React dev server **without touching the
+app's Vite config**:
 [`packages/tab-to-components-extension`](./packages/tab-to-components-extension).
 
 - React 18 locations come from fiber `_debugSource`; React 19 recovers them from
   `_debugStack` plus the dev server's source maps (Vite 8 verified — the mapped
-  positions match this plugin's `data-ttc` markers exactly). Vite's dev maps
-  carry no absolute path, so the extension recovers it from the transformed
-  module itself and builds full URLs such as
-  `vscode://file/C:/Users/me/proj/src/App.tsx:20:9`.
-- The editor is opened through IDE URL schemes (`vscode://`, `cursor://`, …)
-  instead of launching a process on the dev-server machine.
+  positions match this plugin's `data-ttc` markers exactly).
+- **Open in IDE is delegated to this plugin.** When the page runs the plugin's
+  browser client, the extension reads `globalThis.__TTC_CONFIG__` and asks the
+  plugin's dev-server endpoint to open the file. The extension no longer
+  launches `vscode://`-style URLs itself, and without the plugin the action is
+  hidden while the copy actions keep working.
 - Narrow loopback-only permissions (`localhost`, `127.0.0.1`, `[::1]`); not
   published to the Chrome Web Store.
 - Coexists with this plugin: with `overlay: false` the extension reuses the
@@ -432,8 +433,8 @@ pnpm gate:extension   # typecheck + tests + production build + manifest check
 ```
 
 See the [extension README](./packages/tab-to-components-extension/README.md) for
-install/load-unpacked steps, settings, editor presets, QA checklist and
-limitations.
+install/load-unpacked steps, settings, the plugin-delegated Open in IDE flow, QA
+checklist and limitations.
 
 ---
 

@@ -56,6 +56,7 @@ function parseStatusResponse(value: unknown): RuntimeStatusResponse | null {
     typeof value.ok !== "boolean" ||
     typeof value.hasReact !== "boolean" ||
     typeof value.pluginOverlay !== "boolean" ||
+    typeof value.plugin !== "boolean" ||
     typeof value.enabled !== "boolean"
   ) {
     return null
@@ -67,6 +68,7 @@ function parseStatusResponse(value: unknown): RuntimeStatusResponse | null {
     hasReact: value.hasReact,
     reactKind,
     pluginOverlay: value.pluginOverlay,
+    plugin: value.plugin,
     enabled: value.enabled,
     origin: typeof value.origin === "string" ? value.origin : null,
   }
@@ -207,8 +209,15 @@ function Popup() {
   const localTab = activeTab !== null && isLocalDevUrl(activeTab.url)
   const originEnabled = origin !== null && !settings.disabledOrigins.includes(origin)
   const overlayEnabled = origin !== null && !isOriginDisabled(settings, origin)
+  const expectedOverlayEnabled =
+    overlayEnabled &&
+    !(
+      settings.settingsSource === "plugin" &&
+      status.kind === "ready" &&
+      status.response.pluginOverlay
+    )
   const runtimeMismatch =
-    status.kind === "ready" && localTab && status.response.enabled !== overlayEnabled
+    status.kind === "ready" && localTab && status.response.enabled !== expectedOverlayEnabled
 
   return (
     <main className="popup">
@@ -283,6 +292,17 @@ function Popup() {
             </p>
             <p className="status__line">
               <span
+                className={`dot ${status.response.plugin ? "dot--ok" : "dot--warn"}`}
+                aria-hidden="true"
+              />
+              <span className="status__text">
+                {status.response.plugin
+                  ? "Vite plugin connected · Open in IDE available"
+                  : "No Vite plugin · Open in IDE unavailable"}
+              </span>
+            </p>
+            <p className="status__line">
+              <span
                 className={`dot ${overlayEnabled ? "dot--ok" : "dot--warn"}`}
                 aria-hidden="true"
               />
@@ -292,25 +312,35 @@ function Popup() {
                   : "Overlay disabled for this origin"}
               </span>
             </p>
-            {status.response.pluginOverlay && !settings.showWhenVitePluginActive && (
-              <>
-                <p className="status__hint">
-                  This app also runs the tab-to-components Vite plugin, so the
-                  extension stays idle. Take over to open sources with this
-                  machine's IDE instead of the dev server.
-                </p>
-                <button
-                  type="button"
-                  className="btn btn--primary btn--small status__retry"
+            {status.response.plugin || status.response.pluginOverlay ? (
+              <div className="field">
+                <label className="field__label" htmlFor="ttc-settings-source">
+                  Settings source
+                </label>
+                <select
+                  id="ttc-settings-source"
+                  value={settings.settingsSource}
                   disabled={!loaded}
-                  onClick={() => {
-                    void persist({ ...settings, showWhenVitePluginActive: true })
+                  onChange={(event) => {
+                    const value = event.target.value
+                    if (value !== "plugin" && value !== "extension") return
+                    void persist({ ...settings, settingsSource: value }).then(() => {
+                      // The content script learns about the write through its
+                      // storage watcher; give it a beat before asking for status.
+                      window.setTimeout(retryStatus, 200)
+                    })
                   }}
                 >
-                  Take over from the Vite plugin
-                </button>
-              </>
-            )}
+                  <option value="plugin">Vite plugin</option>
+                  <option value="extension">Extension</option>
+                </select>
+                <p className="field__detail">
+                  {settings.settingsSource === "plugin"
+                    ? "Keyboard, open mode, click actions and theme follow the plugin; the extension stays idle while the plugin's overlay is on the page."
+                    : "The extension takes over with its own settings and hides the plugin's overlay."}
+                </p>
+              </div>
+            ) : null}
             {!status.response.hasReact && (
               <p className="status__hint">
                 No React development build was detected on this page.

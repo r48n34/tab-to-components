@@ -64,6 +64,32 @@ describe("parseInspectorMessage", () => {
     ).not.toBeNull();
   });
 
+  it("accepts editor requests with a bounded target", () => {
+    const message = parseInspectorMessage({
+      __ttc: PROTOCOL_VERSION,
+      source: "ttc-inspector",
+      type: "open-editor",
+      requestId: 7,
+      file: "D:/projects/app/src/App.tsx:20:9",
+    });
+    expect(message).toEqual({
+      __ttc: PROTOCOL_VERSION,
+      source: "ttc-inspector",
+      type: "open-editor",
+      requestId: 7,
+      file: "D:/projects/app/src/App.tsx:20:9",
+    });
+    expect(
+      parseInspectorMessage({
+        __ttc: PROTOCOL_VERSION,
+        source: "ttc-inspector",
+        type: "open-editor",
+        requestId: 7,
+        file: "",
+      }),
+    ).toBeNull();
+  });
+
   it("rejects wrong versions, sources and malformed payloads", () => {
     expect(
       parseInspectorMessage({ __ttc: 9, source: "ttc-inspector", type: "probe", requestId: 1 }),
@@ -154,6 +180,105 @@ describe("parseAgentMessage", () => {
         requestId: 6,
       }),
     ).not.toBeNull();
+  });
+
+  const plugin = {
+    base: "/",
+    editorEndpoint: "__ttc/open-in-editor",
+    root: "D:/projects/app",
+    keyboard: ["alt"],
+    open: "component",
+    clickActions: ["open", "copy-file"],
+    menu: true,
+    theme: "dark",
+  };
+
+  it("carries the plugin config the page injected", () => {
+    const status = parseAgentMessage({
+      __ttc: PROTOCOL_VERSION,
+      source: "ttc-agent",
+      type: "status",
+      requestId: 4,
+      hasReact: true,
+      reactKind: "19",
+      plugin,
+    });
+    if (status === null || status.type !== "status") throw new Error("expected status");
+    expect(status.plugin).toEqual(plugin);
+
+    const ready = parseAgentMessage({
+      __ttc: PROTOCOL_VERSION,
+      source: "ttc-agent",
+      type: "ready",
+      requestId: 5,
+      hasReact: false,
+      reactKind: "unknown",
+      plugin,
+    });
+    if (ready === null || ready.type !== "ready") throw new Error("expected ready");
+    expect(ready.plugin).toEqual(plugin);
+
+    const activate = parseAgentMessage({
+      ...hover,
+      type: "activate",
+      button: 0,
+      plugin,
+    });
+    if (activate === null || activate.type !== "activate") {
+      throw new Error("expected activate");
+    }
+    expect(activate.plugin).toEqual(plugin);
+  });
+
+  it("treats a missing plugin config as null and rejects a malformed one", () => {
+    const withoutPlugin = parseAgentMessage({
+      __ttc: PROTOCOL_VERSION,
+      source: "ttc-agent",
+      type: "status",
+      requestId: 4,
+      hasReact: true,
+    });
+    if (withoutPlugin === null || withoutPlugin.type !== "status") {
+      throw new Error("expected status");
+    }
+    expect(withoutPlugin.plugin).toBeNull();
+
+    expect(
+      parseAgentMessage({
+        __ttc: PROTOCOL_VERSION,
+        source: "ttc-agent",
+        type: "status",
+        requestId: 4,
+        hasReact: true,
+        plugin: { base: "nope", editorEndpoint: "x", root: "D:/projects/app" },
+      }),
+    ).toBeNull();
+  });
+
+  it("accepts open-editor-result replies", () => {
+    const message = parseAgentMessage({
+      __ttc: PROTOCOL_VERSION,
+      source: "ttc-agent",
+      type: "open-editor-result",
+      requestId: 8,
+      ok: true,
+      message: "Opening the file in your IDE through the Vite dev server.",
+    });
+    if (message === null || message.type !== "open-editor-result") {
+      throw new Error("expected open-editor-result");
+    }
+    expect(message.ok).toBe(true);
+    expect(message.message).toContain("Vite dev server");
+
+    expect(
+      parseAgentMessage({
+        __ttc: PROTOCOL_VERSION,
+        source: "ttc-agent",
+        type: "open-editor-result",
+        requestId: 8,
+        ok: true,
+      }),
+    ).toBeNull();
   });
 
   it("drops entries without source evidence", () => {

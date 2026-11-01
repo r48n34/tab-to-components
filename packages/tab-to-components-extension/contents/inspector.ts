@@ -10,9 +10,16 @@
 import type { PlasmoCSConfig } from "plasmo";
 
 import { copyText } from "../lib/clipboard";
-import { buildEditorUrl, editorPresetLabel, LaunchLimiter } from "../lib/editor";
 import { createInspector, type Inspector, type OpenEditorResult } from "../lib/install";
 import { isLocalDevOrigin, originOf } from "../lib/origin";
+import {
+  formatEditorTarget,
+  OPEN_EDITOR_REQUIRES_PLUGIN,
+} from "../lib/plugin-editor";
+import {
+  applyPluginSettings,
+  type PluginConfig,
+} from "../lib/plugin-config";
 import {
   createRequestIdFactory,
   parseAgentMessage,
@@ -21,10 +28,7 @@ import {
   type InspectorMessage,
 } from "../lib/protocol";
 import {
-  RUNTIME_OPEN_EXTERNAL_MESSAGE,
   RUNTIME_STATUS_MESSAGE,
-  type OpenExternalRequest,
-  type OpenExternalResponse,
   type RuntimeStatusResponse,
 } from "../lib/runtime";
 import {
@@ -36,7 +40,6 @@ import {
 } from "../lib/settings";
 import {
   formatLocation,
-  resolveAbsoluteLocation,
   type SourceLocation,
 } from "../lib/source/location";
 import { createSourceResolver } from "../lib/source/resolve";
@@ -77,49 +80,6 @@ function pluginOverlayPresent(): boolean {
   }
 }
 
-/** Launch an IDE URL with a synthetic anchor click inside the user gesture. */
-function openViaAnchor(url: string): boolean {
-  try {
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.rel = "noopener noreferrer";
-    anchor.style.display = "none";
-    const parent = document.body ?? document.documentElement;
-    if (parent === null) return false;
-    parent.append(anchor);
-    anchor.click();
-    anchor.remove();
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function openViaBackground(url: string): void {
-  try {
-    const request: OpenExternalRequest = {
-      type: RUNTIME_OPEN_EXTERNAL_MESSAGE,
-      url,
-    };
-    chrome.runtime.sendMessage(request, (response?: OpenExternalResponse) => {
-      // Reading lastError prevents "Unchecked runtime.lastError" noise when the
-      // service worker is asleep or the URL was rejected.
-      const error = chrome.runtime.lastError;
-      if (error || !response || response.ok !== true) {
-        // eslint-disable-next-line no-console
-        console.warn(
-          "[tab-to-components] could not hand the editor URL to the OS:",
-          error?.message ?? response?.error ?? "no response",
-          url,
-        );
-      }
-    });
-  } catch {
-    // Extension APIs unavailable (tests/embedding): the toast already told the
-    // developer they can copy the path.
-  }
-}
-
 async function installInspector(): Promise<(() => void) | null> {
   if (typeof window === "undefined" || typeof document === "undefined") {
     return null;
@@ -139,11 +99,18 @@ async function installInspector(): Promise<(() => void) | null> {
   /** Whether the plugin's overlay is currently hidden by our takeover sheet. */
   let pluginOverlayHidden = false;
 
-  const limiter = new LaunchLimiter();
+  /** Plugin configuration last reported by the agent (null without plugin). */
+  let plugin: PluginConfig | null = null;
+
   const nextProbeId = createRequestIdFactory();
   const pendingProbes = new Map<
     number,
     (message: Extract<AgentMessage, { type: "status" }>) => void
+  >();
+  const nextEditorRequestId = createRequestIdFactory();
+  const pendingEditorRequests = new Map<
+    number,
+    (message: Extract<AgentMessage, { type: "open-editor-result" }>) => void
   >();
 
   function postToAgent(message: InspectorMessage): void {
@@ -154,16 +121,53 @@ async function installInspector(): Promise<(() => void) | null> {
     }
   }
 
+  function pluginKey(value: PluginConfig | null): string {
+    if (value === null) return "";
+    return JSON.stringify([
+      value.base,
+      value.editorEndpoint,
+      value.root,
+      value.keyboard,
+      value.open,
+      value.clickActions,
+      value.menu,
+      value.theme,
+    ]);
+  }
+
+  /** Store the latest plugin config; re-render when it actually changed. */
+  function applyPlugin(next: PluginConfig | null): void {
+    if (pluginKey(next) === pluginKey(plugin)) return;
+    plugin = next;
+    if (!disposed) refreshController();
+  }
+
+  /**
+   * The settings in force on this page. With `settingsSource: "plugin"` and the
+   * Vite plugin connected, the plugin's overlay options (keyboard, open mode,
+   * click actions, menu, theme) win; everything else stays local to the
+   * extension.
+   */
+  function effectiveSettings(): Settings {
+    if (settings.settingsSource === "plugin" && plugin !== null) {
+      return applyPluginSettings(settings, plugin);
+    }
+    return settings;
+  }
+
   function effectiveEnabled(): boolean {
     if (isOriginDisabled(settings, origin)) return false;
-    return settings.showWhenVitePluginActive || !pluginOverlayPresent();
+    // Taking over is what makes the extension run next to the plugin's overlay;
+    // with the plugin as the settings source the plugin's overlay keeps the page.
+    return settings.settingsSource === "extension" || !pluginOverlayPresent();
   }
 
   function agentConfig(): { enabled: boolean; keyboard: Settings["keyboard"]; menu: boolean } {
+    const active = effectiveSettings();
     return {
       enabled: effectiveEnabled(),
-      keyboard: settings.keyboard,
-      menu: settings.menu,
+      keyboard: active.keyboard,
+      menu: active.menu,
     };
   }
 
@@ -176,44 +180,58 @@ async function installInspector(): Promise<(() => void) | null> {
     });
   }
 
+  function requestOpenEditor(
+    file: string,
+    timeoutMs = 4000,
+  ): Promise<Extract<AgentMessage, { type: "open-editor-result" }> | null> {
+    return new Promise((resolveRequest) => {
+      const requestId = nextEditorRequestId();
+      const timer = setTimeout(() => {
+        pendingEditorRequests.delete(requestId);
+        resolveRequest(null);
+      }, timeoutMs);
+      pendingEditorRequests.set(requestId, (message) => {
+        clearTimeout(timer);
+        pendingEditorRequests.delete(requestId);
+        resolveRequest(message);
+      });
+      postToAgent({
+        __ttc: PROTOCOL_VERSION,
+        source: "ttc-inspector",
+        type: "open-editor",
+        requestId,
+        file,
+      });
+    });
+  }
+
+  /**
+   * Delegate "Open in IDE" to the Vite plugin's dev-server endpoint.
+   *
+   * Without the plugin there is no endpoint to call, so the action is reported
+   * as unavailable instead of silently doing nothing (the inspector hides it
+   * from the menu for the same reason).
+   */
   async function openEditor(location: SourceLocation): Promise<OpenEditorResult> {
-    const root = projectRootFor(settings, origin);
-    const built = buildEditorUrl(settings.editor, { location, root });
-    if ("error" in built) {
-      // eslint-disable-next-line no-console
-      console.warn(
-        "[tab-to-components] cannot build an editor URL:",
-        built.error,
-        location,
-      );
-      return { ok: false, message: built.error };
+    if (plugin === null) {
+      return { ok: false, message: OPEN_EDITOR_REQUIRES_PLUGIN };
     }
-    // Always trace the exact URL: when Chrome refuses to hand a protocol to
-    // the OS, this line is the fastest way to tell a path problem from a
-    // protocol/launch problem.
-    // eslint-disable-next-line no-console
-    console.info("[tab-to-components] opening editor URL:", built.url);
-    const verdict = limiter.reserve(built.url);
-    if (verdict === "duplicate") {
-      return { ok: true, message: "Already opening that file in your editor." };
-    }
-    if (verdict === "limited") {
+    const target = formatEditorTarget(location, plugin.root);
+    if (target === null) {
       return {
         ok: false,
-        message: "Too many editor launches — try again in a moment.",
+        message: `No usable file path for ${formatLocation(location)}.`,
       };
     }
-    const launched = openViaAnchor(built.url);
-    if (!launched) openViaBackground(built.url);
-    setTimeout(() => limiter.release(built.url), 750);
-    // Show the absolute path when one exists: the toast is also how a
-    // developer verifies that the editor URL carries a real file path.
-    const file = resolveAbsoluteLocation(location, root) ?? formatLocation(location);
-    const editor = editorPresetLabel(settings.editor);
-    return {
-      ok: true,
-      message: `Opening ${file} in ${editor}. If Chrome asks, allow the protocol.`,
-    };
+    if (settings.debug) {
+      // eslint-disable-next-line no-console
+      console.debug("[tab-to-components] open in IDE:", target);
+    }
+    const result = await requestOpenEditor(target);
+    if (result === null) {
+      return { ok: false, message: "The Vite dev server did not answer." };
+    }
+    return { ok: result.ok, message: result.message };
   }
 
   function resolveProjectRoot(): string | null {
@@ -227,11 +245,13 @@ async function installInspector(): Promise<(() => void) | null> {
       projectRoot: controllerRoot,
       base: "/",
     });
+    const active = effectiveSettings();
     inspector = createInspector({
-      settings,
+      settings: active,
       origin,
       resolver,
       openEditor,
+      canOpenInIde: () => plugin !== null,
       copy: (text) => copyText(text),
       postToAgent,
     });
@@ -246,14 +266,15 @@ async function installInspector(): Promise<(() => void) | null> {
 
   function refreshController(): void {
     const enabled = effectiveEnabled();
-    // When the developer opted into running alongside the Vite plugin, take
-    // the plugin's overlay out of the page: the extension's UI is the one that
-    // opens `vscode://` on this machine, and two outlines for one element are
-    // unusable. When the extension is idle, the plugin's overlay is untouched.
-    setForeignPluginOverlayHidden(
-      document,
-      enabled && settings.showWhenVitePluginActive && pluginOverlayPresent(),
-    );
+    // With the extension as the settings source the developer opted into
+    // running alongside the Vite plugin, so take the plugin's overlay out of
+    // the page: the extension's UI handles clicks on this machine, and two
+    // outlines for one element are unusable. When the plugin is the settings
+    // source, its overlay is the one that stays.
+    const hidePluginOverlay =
+      enabled && settings.settingsSource === "extension" && pluginOverlayPresent();
+    setForeignPluginOverlayHidden(document, hidePluginOverlay);
+    pluginOverlayHidden = hidePluginOverlay;
     if (!enabled) {
       stopController();
       sendConfig();
@@ -267,7 +288,7 @@ async function installInspector(): Promise<(() => void) | null> {
     if (inspector === null) {
       createController();
     } else {
-      inspector.setSettings(settings);
+      inspector.setSettings(effectiveSettings());
     }
     sendConfig();
   }
@@ -288,6 +309,7 @@ async function installInspector(): Promise<(() => void) | null> {
         hasReact: false,
         reactKind: "unknown",
         pluginOverlay,
+        plugin: plugin !== null,
         enabled: false,
         origin,
       });
@@ -295,11 +317,13 @@ async function installInspector(): Promise<(() => void) | null> {
     }
 
     void probeAgent().then((status) => {
+      if (status !== null) applyPlugin(status.plugin);
       sendResponse({
         ok: true,
         hasReact: status?.hasReact ?? false,
         reactKind: status?.reactKind ?? "unknown",
         pluginOverlay,
+        plugin: plugin !== null,
         enabled,
         origin,
       });
@@ -337,6 +361,19 @@ async function installInspector(): Promise<(() => void) | null> {
     const message = parseAgentMessage(event.data);
     if (message === null) return;
 
+    if (message.type === "open-editor-result") {
+      const resolveRequest = pendingEditorRequests.get(message.requestId);
+      if (resolveRequest !== undefined) resolveRequest(message);
+      return;
+    }
+    if (
+      message.type === "ready" ||
+      message.type === "status" ||
+      message.type === "activate" ||
+      message.type === "chain-menu"
+    ) {
+      applyPlugin(message.plugin);
+    }
     if (message.type === "ready") {
       sendConfig();
       return;
@@ -347,14 +384,14 @@ async function installInspector(): Promise<(() => void) | null> {
       return;
     }
 
-    // The Vite plugin's own overlay may mount after page load. Stay dormant
-    // (unless the developer opted in) instead of rendering two overlays.
-    if (!settings.showWhenVitePluginActive && pluginOverlayPresent()) {
+    // The Vite plugin's own overlay may mount after page load. With the plugin
+    // as the settings source, stay dormant instead of rendering two overlays.
+    if (settings.settingsSource !== "extension" && pluginOverlayPresent()) {
       if (!pluginOverlayNotified) {
         pluginOverlayNotified = true;
         // eslint-disable-next-line no-console
         console.debug(
-          "[tab-to-components] Vite plugin overlay detected; the extension is idle on this page. Enable \"Take over the Vite plugin overlay\" in the extension options to use this UI instead.",
+          "[tab-to-components] Vite plugin overlay detected; the extension is idle on this page. Set \"Settings source\" to \"Extension\" in the extension options to use this UI instead.",
         );
       }
       if (pluginOverlayHidden) {
@@ -368,9 +405,10 @@ async function installInspector(): Promise<(() => void) | null> {
       return;
     }
 
-    // Running alongside the plugin: hide its overlay as soon as it appears.
+    // Extension is the settings source: hide the plugin's overlay as soon as
+    // it appears so only one set of controls is on the page.
     if (
-      settings.showWhenVitePluginActive &&
+      settings.settingsSource === "extension" &&
       !pluginOverlayHidden &&
       pluginOverlayPresent()
     ) {
@@ -391,6 +429,11 @@ async function installInspector(): Promise<(() => void) | null> {
   chrome.runtime.onMessage.addListener(handleRuntimeMessage);
   const unwatch = store.watch(onStorageChanged);
   refreshController();
+  // Learn the plugin configuration early so the popup can report it before the
+  // first click; the agent republishes it on every ready/status message.
+  void probeAgent().then((status) => {
+    if (!disposed && status !== null) applyPlugin(status.plugin);
+  });
 
   function dispose(): void {
     if (disposed) return;

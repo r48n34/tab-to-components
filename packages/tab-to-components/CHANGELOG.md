@@ -3,6 +3,16 @@
 All notable changes to `tab-to-components` are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Companion Chrome extension
+
+- **Open in IDE no longer launches IDE URL schemes.** The extension previously emitted `vscode://`, `cursor://` and similar URLs, which depend on the browser/OS protocol handoff and were unreliable. It now delegates the action to this plugin's dev-server editor endpoint: with the plugin's browser client on the page, the extension reads `globalThis.__TTC_CONFIG__` (`base`, `editorEndpoint`, `root`) and issues a same-origin request such as `/__ttc/open-in-editor?file=<path:line:column>`, so the editor opens on the dev-server machine with the plugin's containment checks, rate limits and `editor` setting (`auto` included).
+- The `editor` preset/custom-template setting, its options card, the extension-side `ttc:open-external` background handler and `lib/editor.ts` are removed; previously stored values are ignored. `projectRoots` remains, for **Copy full path**.
+- Without the plugin the **Open in IDE** row is hidden and only the copy actions are offered; the chain picker explains why it cannot open, and the popup reports **Vite plugin connected · Open in IDE available** or **No Vite plugin · Open in IDE unavailable**.
+- New **`settingsSource`** option (`"plugin"` by default, or `"extension"`) chooses which configuration wins when the page also runs the plugin. With `"plugin"` the extension mirrors the plugin's `keyboard`, `open`, `clickActions`, `menu` and `theme` and stays idle while the plugin's overlay is up (or renders its own overlay with those options when the plugin uses `overlay: false`); with `"extension"` it takes over, hides the plugin's overlay and uses the stored extension settings. The popup and **Options → Advanced** expose the choice. This replaces the `showWhenVitePluginActive` takeover boolean, which is migrated (`true` → `"extension"`) on load.
+- Tests: new `test/plugin-editor.test.ts` and `test/plugin-config.test.ts`, protocol coverage for the editor messages and plugin options, and install tests for hiding the action (17 files, 223 tests).
+
 ## 0.5.0 - 2026-10-28
 
 Feature release: icon-led overlay menus, extensible click actions with AI/share presets, a wider verified compatibility matrix, and a companion Chrome extension in the monorepo. Defaults, existing options and output formats are unchanged; the new `customActions` option and eight new `clickActions` values are additive.

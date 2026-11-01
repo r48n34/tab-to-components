@@ -7,13 +7,6 @@
  * validated and falls back to a safe default.
  */
 
-import {
-  DEFAULT_EDITOR_SETTING,
-  isEditorPresetId,
-  MAX_EDITOR_TEMPLATE_LENGTH,
-  type EditorPresetId,
-  type EditorSetting,
-} from "./editor";
 import { normalizeOrigin } from "./origin";
 import {
   DEFAULT_CLICK_ACTIONS,
@@ -36,6 +29,19 @@ import {
 export const SETTINGS_KEY = "ttc:settings:v1";
 export const SETTINGS_VERSION = 1;
 
+/**
+ * Which options win when the page also runs the tab-to-components Vite plugin.
+ *
+ * - `plugin`: follow the plugin's `keyboard`, `open`, `clickActions`, `menu` and
+ *   `theme`; while the plugin's own overlay is on the page the extension stays
+ *   idle, and when the plugin sets `overlay: false` the extension renders its
+ *   overlay with those plugin values.
+ * - `extension`: take over the page overlay and use the extension's settings.
+ */
+export type SettingsSource = "plugin" | "extension";
+
+export const SETTINGS_SOURCES: readonly SettingsSource[] = ["plugin", "extension"];
+
 export interface Settings {
   version: 1;
   /** Master switch for the overlay. */
@@ -47,9 +53,8 @@ export interface Settings {
   clickActions: ClickAction[];
   menu: boolean;
   theme: ThemeMode;
-  /** Run even when the Vite plugin's own overlay is on the page (off by default). */
-  showWhenVitePluginActive: boolean;
-  editor: EditorSetting;
+  /** Settings source when both the extension and the Vite plugin are installed. */
+  settingsSource: SettingsSource;
   /** Origin → absolute project root, used when a location has no absolute path. */
   projectRoots: Record<string, string>;
   /** Verbose console logging for troubleshooting. */
@@ -65,8 +70,7 @@ export const DEFAULT_SETTINGS: Settings = {
   clickActions: [...DEFAULT_CLICK_ACTIONS],
   menu: true,
   theme: "dark",
-  showWhenVitePluginActive: false,
-  editor: { ...DEFAULT_EDITOR_SETTING },
+  settingsSource: "plugin",
   projectRoots: {},
   debug: false,
 };
@@ -78,7 +82,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-function normalizeKeyboard(value: unknown): ModifierKey[] {
+export function normalizeKeyboard(value: unknown): ModifierKey[] {
   const source = Array.isArray(value) ? value : [];
   const keys: ModifierKey[] = [];
   for (const key of source) {
@@ -99,7 +103,7 @@ function normalizeOrigins(value: unknown): string[] {
   return origins;
 }
 
-function normalizeClickActions(value: unknown): ClickAction[] {
+export function normalizeClickActions(value: unknown): ClickAction[] {
   const source = Array.isArray(value) ? value : [];
   const actions: ClickAction[] = [];
   for (const item of source) {
@@ -108,30 +112,16 @@ function normalizeClickActions(value: unknown): ClickAction[] {
   return actions.length > 0 ? actions : [...DEFAULT_CLICK_ACTIONS];
 }
 
-function normalizeOpen(value: unknown): OpenMode {
+export function normalizeOpen(value: unknown): OpenMode {
   return typeof value === "string" && (OPEN_MODES as readonly string[]).includes(value)
     ? (value as OpenMode)
     : DEFAULT_SETTINGS.open;
 }
 
-function normalizeTheme(value: unknown): ThemeMode {
+export function normalizeTheme(value: unknown): ThemeMode {
   return typeof value === "string" && (THEME_MODES as readonly string[]).includes(value)
     ? (value as ThemeMode)
     : DEFAULT_SETTINGS.theme;
-}
-
-function normalizeEditor(value: unknown): EditorSetting {
-  if (!isRecord(value)) return { ...DEFAULT_EDITOR_SETTING };
-  const preset: EditorPresetId = isEditorPresetId(value.preset)
-    ? value.preset
-    : DEFAULT_EDITOR_SETTING.preset;
-  if (preset !== "custom") return { preset, template: "" };
-  const rawTemplate = typeof value.template === "string" ? value.template.trim() : "";
-  if (rawTemplate === "") return { ...DEFAULT_EDITOR_SETTING };
-  return {
-    preset: "custom",
-    template: rawTemplate.slice(0, MAX_EDITOR_TEMPLATE_LENGTH),
-  };
 }
 
 function normalizeProjectRoots(value: unknown): Record<string, string> {
@@ -151,6 +141,18 @@ function normalizeProjectRoots(value: unknown): Record<string, string> {
   return roots;
 }
 
+/**
+ * Migrates the pre-`settingsSource` takeover boolean: an explicit takeover used
+ * to mean "extension settings win"; everything else now means "follow the plugin".
+ */
+function normalizeSettingsSource(value: unknown, legacyTakeover: unknown): SettingsSource {
+  if (typeof value === "string" && (SETTINGS_SOURCES as readonly string[]).includes(value)) {
+    return value as SettingsSource;
+  }
+  if (legacyTakeover === true) return "extension";
+  return DEFAULT_SETTINGS.settingsSource;
+}
+
 /** Merge arbitrary stored data into a valid, fully-populated settings object. */
 export function normalizeSettings(input: unknown): Settings {
   const source = isRecord(input) ? input : {};
@@ -164,11 +166,10 @@ export function normalizeSettings(input: unknown): Settings {
     clickActions: normalizeClickActions(source.clickActions),
     menu: typeof source.menu === "boolean" ? source.menu : DEFAULT_SETTINGS.menu,
     theme: normalizeTheme(source.theme),
-    showWhenVitePluginActive:
-      typeof source.showWhenVitePluginActive === "boolean"
-        ? source.showWhenVitePluginActive
-        : DEFAULT_SETTINGS.showWhenVitePluginActive,
-    editor: normalizeEditor(source.editor),
+    settingsSource: normalizeSettingsSource(
+      source.settingsSource,
+      source.showWhenVitePluginActive,
+    ),
     projectRoots: normalizeProjectRoots(source.projectRoots),
     debug: typeof source.debug === "boolean" ? source.debug : DEFAULT_SETTINGS.debug,
   };

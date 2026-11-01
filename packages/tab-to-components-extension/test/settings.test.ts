@@ -29,7 +29,7 @@ describe("normalizeSettings", () => {
       clickActions: ["copy-location", "copy-location", "nope"],
       menu: false,
       theme: "light",
-      showWhenVitePluginActive: true,
+      settingsSource: "extension",
       debug: true,
     });
     expect(settings.enabled).toBe(false);
@@ -38,8 +38,28 @@ describe("normalizeSettings", () => {
     expect(settings.clickActions).toEqual(["copy-location"]);
     expect(settings.menu).toBe(false);
     expect(settings.theme).toBe("light");
-    expect(settings.showWhenVitePluginActive).toBe(true);
+    expect(settings.settingsSource).toBe("extension");
     expect(settings.debug).toBe(true);
+  });
+
+  it("defaults to the plugin settings source and migrates the old takeover flag", () => {
+    expect(normalizeSettings(undefined).settingsSource).toBe("plugin");
+    expect(normalizeSettings({ settingsSource: "extension" }).settingsSource).toBe(
+      "extension",
+    );
+    expect(normalizeSettings({ settingsSource: "plugin" }).settingsSource).toBe("plugin");
+    // Unknown values fall through to the legacy boolean, then to the default.
+    expect(normalizeSettings({ settingsSource: "nope" }).settingsSource).toBe("plugin");
+    expect(
+      normalizeSettings({ settingsSource: "nope", showWhenVitePluginActive: true })
+        .settingsSource,
+    ).toBe("extension");
+    expect(
+      normalizeSettings({ showWhenVitePluginActive: true }).settingsSource,
+    ).toBe("extension");
+    expect(
+      normalizeSettings({ showWhenVitePluginActive: false }).settingsSource,
+    ).toBe("plugin");
   });
 
   it("ignores unknown open modes, themes and action lists", () => {
@@ -53,24 +73,6 @@ describe("normalizeSettings", () => {
     expect(settings.theme).toBe(DEFAULT_SETTINGS.theme);
     expect(settings.clickActions).toEqual(DEFAULT_SETTINGS.clickActions);
     expect(settings.keyboard).toEqual(DEFAULT_SETTINGS.keyboard);
-  });
-
-  it("normalizes editors", () => {
-    expect(normalizeSettings({ editor: { preset: "cursor" } }).editor).toEqual({
-      preset: "cursor",
-      template: "",
-    });
-    expect(
-      normalizeSettings({ editor: { preset: "custom", template: "  myide://{path}  " } })
-        .editor,
-    ).toEqual({ preset: "custom", template: "myide://{path}" });
-    // An empty custom template is useless: fall back to the default editor.
-    expect(normalizeSettings({ editor: { preset: "custom", template: "" } }).editor).toEqual(
-      DEFAULT_SETTINGS.editor,
-    );
-    expect(normalizeSettings({ editor: { preset: "unknown" } }).editor).toEqual(
-      DEFAULT_SETTINGS.editor,
-    );
   });
 
   it("validates project roots and origins", () => {

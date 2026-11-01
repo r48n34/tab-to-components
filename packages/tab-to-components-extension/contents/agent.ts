@@ -26,6 +26,11 @@ import {
 } from "../lib/agent/fiber";
 import { elementFromTarget, isModifierHeld } from "../lib/agent/modifiers";
 import {
+  buildOpenEditorRequest,
+  pluginOpenFailureMessage,
+} from "../lib/plugin-editor";
+import { readPluginConfig } from "../lib/plugin-config";
+import {
   createRequestIdFactory,
   PROTOCOL_VERSION,
   parseInspectorMessage,
@@ -142,6 +147,7 @@ function installAgent(): (() => void) | null {
       type: "ready",
       requestId: nextRequestId(),
       ...status,
+      plugin: readPluginConfig(globalThis),
     });
   }
 
@@ -153,7 +159,61 @@ function installAgent(): (() => void) | null {
       type: "status",
       requestId,
       ...status,
+      plugin: readPluginConfig(globalThis),
     });
+  }
+
+  function postOpenEditorResult(requestId: number, ok: boolean, message: string): void {
+    post({
+      __ttc: PROTOCOL_VERSION,
+      source: "ttc-agent",
+      type: "open-editor-result",
+      requestId,
+      ok,
+      message,
+    });
+  }
+
+  /**
+   * Ask the dev server to launch the editor.
+   *
+   * The request runs in the page's own world so it is same-origin: the plugin's
+   * endpoint does not need (and does not send) CORS headers, and nothing leaves
+   * the browser except a request to the dev server the page already uses.
+   */
+  async function openEditor(requestId: number, file: string): Promise<void> {
+    const plugin = readPluginConfig(globalThis);
+    if (plugin === null) {
+      postOpenEditorResult(
+        requestId,
+        false,
+        "The tab-to-components Vite plugin is no longer available on this page.",
+      );
+      return;
+    }
+    const requestUrl = buildOpenEditorRequest(plugin, file);
+    try {
+      const response = await fetch(requestUrl, {
+        method: "GET",
+        credentials: "same-origin",
+        cache: "no-store",
+      });
+      if (response.ok) {
+        postOpenEditorResult(
+          requestId,
+          true,
+          "Opening the file in your IDE through the Vite dev server.",
+        );
+        return;
+      }
+      postOpenEditorResult(requestId, false, pluginOpenFailureMessage(response.status));
+    } catch {
+      postOpenEditorResult(
+        requestId,
+        false,
+        "Could not reach the Vite dev server to open the editor.",
+      );
+    }
   }
 
   function postDisarm(reason: "keyup" | "blur" | "scroll" | "escape" | "disable"): void {
@@ -387,6 +447,7 @@ function installAgent(): (() => void) | null {
       x: event.clientX,
       y: event.clientY,
       button: event.button,
+      plugin: readPluginConfig(globalThis),
     });
   }
 
@@ -407,6 +468,7 @@ function installAgent(): (() => void) | null {
       chain,
       x: event.clientX,
       y: event.clientY,
+      plugin: readPluginConfig(globalThis),
     });
   }
 
@@ -443,6 +505,9 @@ function installAgent(): (() => void) | null {
           cancelHover();
           postHoverNone();
         }
+        return;
+      case "open-editor":
+        void openEditor(message.requestId, message.file);
         return;
       default:
         return;

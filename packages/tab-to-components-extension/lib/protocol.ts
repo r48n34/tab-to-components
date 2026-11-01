@@ -7,6 +7,8 @@
  * re-validated against the path/URL rules.
  */
 
+import { MAX_EDITOR_TARGET } from "./plugin-editor";
+import { parsePluginConfig, type PluginConfig } from "./plugin-config";
 import type { ModifierKey } from "./types";
 
 export const PROTOCOL_VERSION = 1;
@@ -60,7 +62,15 @@ export interface AgentConfig {
 export type InspectorMessage =
   | { __ttc: 1; source: "ttc-inspector"; type: "config"; config: AgentConfig }
   | { __ttc: 1; source: "ttc-inspector"; type: "probe"; requestId: number }
-  | { __ttc: 1; source: "ttc-inspector"; type: "menu-state"; open: boolean };
+  | { __ttc: 1; source: "ttc-inspector"; type: "menu-state"; open: boolean }
+  | {
+      __ttc: 1;
+      source: "ttc-inspector";
+      type: "open-editor";
+      requestId: number;
+      /** `path:line:column`, validated by the agent before it is fetched. */
+      file: string;
+    };
 
 export type DisarmReason = "keyup" | "blur" | "scroll" | "escape" | "disable";
 
@@ -85,6 +95,8 @@ export type AgentMessage =
       x: number;
       y: number;
       button: number;
+      /** The plugin configuration at the time of the click, when present. */
+      plugin: PluginConfig | null;
     }
   | {
       __ttc: 1;
@@ -94,6 +106,7 @@ export type AgentMessage =
       chain: RawEntry[];
       x: number;
       y: number;
+      plugin: PluginConfig | null;
     }
   | {
       __ttc: 1;
@@ -116,6 +129,7 @@ export type AgentMessage =
       requestId: number;
       hasReact: boolean;
       reactKind: "18" | "19" | "unknown";
+      plugin: PluginConfig | null;
     }
   | {
       __ttc: 1;
@@ -124,6 +138,15 @@ export type AgentMessage =
       requestId: number;
       hasReact: boolean;
       reactKind: ReactKind;
+      plugin: PluginConfig | null;
+    }
+  | {
+      __ttc: 1;
+      source: "ttc-agent";
+      type: "open-editor-result";
+      requestId: number;
+      ok: boolean;
+      message: string;
     }
   | {
       __ttc: 1;
@@ -152,6 +175,12 @@ function isFiniteNumber(value: unknown): value is number {
 
 function isBoundedString(value: unknown, max: number): value is string {
   return typeof value === "string" && value.length > 0 && value.length <= max;
+}
+
+/** `null` when absent, `undefined` when present but invalid. */
+function pluginField(value: unknown): PluginConfig | null | undefined {
+  if (value === undefined || value === null) return null;
+  return parsePluginConfig(value) ?? undefined;
 }
 
 function isPosition(value: unknown): value is number {
@@ -259,6 +288,17 @@ export function parseInspectorMessage(value: unknown): InspectorMessage | null {
         open: value.open,
       };
     }
+    case "open-editor": {
+      if (!isPosition(value.requestId)) return null;
+      if (!isBoundedString(value.file, MAX_EDITOR_TARGET)) return null;
+      return {
+        __ttc: PROTOCOL_VERSION,
+        source: "ttc-inspector",
+        type: "open-editor",
+        requestId: value.requestId,
+        file: value.file,
+      };
+    }
     default:
       return null;
   }
@@ -294,6 +334,8 @@ export function parseAgentMessage(value: unknown): AgentMessage | null {
       if (chain === null) return null;
       if (!isFiniteNumber(value.x) || !isFiniteNumber(value.y)) return null;
       if (!isFiniteNumber(value.button)) return null;
+      const plugin = pluginField(value.plugin);
+      if (plugin === undefined) return null;
       return {
         __ttc: PROTOCOL_VERSION,
         source: "ttc-agent",
@@ -303,12 +345,15 @@ export function parseAgentMessage(value: unknown): AgentMessage | null {
         x: value.x,
         y: value.y,
         button: value.button,
+        plugin,
       };
     }
     case "chain-menu": {
       const chain = sanitizeRawChain(value.chain);
       if (chain === null) return null;
       if (!isFiniteNumber(value.x) || !isFiniteNumber(value.y)) return null;
+      const plugin = pluginField(value.plugin);
+      if (plugin === undefined) return null;
       return {
         __ttc: PROTOCOL_VERSION,
         source: "ttc-agent",
@@ -317,6 +362,7 @@ export function parseAgentMessage(value: unknown): AgentMessage | null {
         chain,
         x: value.x,
         y: value.y,
+        plugin,
       };
     }
     case "dismiss":
@@ -348,6 +394,8 @@ export function parseAgentMessage(value: unknown): AgentMessage | null {
     }
     case "status": {
       if (typeof value.hasReact !== "boolean") return null;
+      const plugin = pluginField(value.plugin);
+      if (plugin === undefined) return null;
       const reactKind =
         value.reactKind === "18" || value.reactKind === "19" ? value.reactKind : "unknown";
       return {
@@ -357,10 +405,13 @@ export function parseAgentMessage(value: unknown): AgentMessage | null {
         requestId,
         hasReact: value.hasReact,
         reactKind,
+        plugin,
       };
     }
     case "ready": {
       if (typeof value.hasReact !== "boolean") return null;
+      const plugin = pluginField(value.plugin);
+      if (plugin === undefined) return null;
       const reactKind =
         value.reactKind === "18" || value.reactKind === "19" ? value.reactKind : "unknown";
       return {
@@ -370,6 +421,19 @@ export function parseAgentMessage(value: unknown): AgentMessage | null {
         requestId,
         hasReact: value.hasReact,
         reactKind,
+        plugin,
+      };
+    }
+    case "open-editor-result": {
+      if (typeof value.ok !== "boolean") return null;
+      if (!isBoundedString(value.message, MAX_EDITOR_TARGET)) return null;
+      return {
+        __ttc: PROTOCOL_VERSION,
+        source: "ttc-agent",
+        type: "open-editor-result",
+        requestId,
+        ok: value.ok,
+        message: value.message,
       };
     }
     case "hover-none":

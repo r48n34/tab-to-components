@@ -8,6 +8,7 @@
  */
 
 import { sourceActionCopy, sourceActionDetail, sourceActionLabel } from "./actions";
+import { OPEN_EDITOR_REQUIRES_PLUGIN } from "./plugin-editor";
 import type { AgentMessage, InspectorMessage, RawEntry } from "./protocol";
 import { formatLocation, formatNameLabel } from "./source/location";
 import type { SourceLocation } from "./source/location";
@@ -28,6 +29,12 @@ export interface InspectorDependencies {
   origin: string | null;
   resolver: SourceResolver;
   openEditor: (location: SourceLocation) => Promise<OpenEditorResult>;
+  /**
+   * Whether the page runs the tab-to-components Vite plugin. "Open in IDE" is
+   * delegated to the plugin's dev-server endpoint, so without it the action is
+   * hidden instead of launching an editor URL that the OS may not handle.
+   */
+  canOpenInIde?: () => boolean;
   copy: (text: string) => Promise<boolean>;
   postToAgent: (message: InspectorMessage) => void;
   document?: Document;
@@ -56,6 +63,14 @@ export function createInspector(deps: InspectorDependencies): Inspector {
   let settings = deps.settings;
   let root = projectRootFor(settings, deps.origin);
   let disposed = false;
+
+  const canOpenInIde = deps.canOpenInIde ?? (() => true);
+
+  function availableActions(): ClickAction[] {
+    return settings.clickActions.filter(
+      (action) => action !== "open" || canOpenInIde(),
+    );
+  }
 
   let hoverToken = 0;
 
@@ -163,7 +178,7 @@ export function createInspector(deps: InspectorDependencies): Inspector {
   }
 
   function actionItems(entry: ResolvedEntry | null): MenuItem[] {
-    return settings.clickActions.map((action) => ({
+    return availableActions().map((action) => ({
       label: sourceActionLabel(action),
       detail:
         entry === null
@@ -181,9 +196,14 @@ export function createInspector(deps: InspectorDependencies): Inspector {
   ): Promise<void> {
     const resolved = await safeResolve(primary);
     if (disposed) return;
-    const actions = settings.clickActions;
+    const actions = availableActions();
     const first = actions[0];
-    if (first === undefined) return;
+    if (first === undefined) {
+      if (settings.clickActions.includes("open")) {
+        toastError(OPEN_EDITOR_REQUIRES_PLUGIN);
+      }
+      return;
+    }
     if (actions.length === 1) {
       runAction(first, resolved);
       return;
@@ -200,6 +220,10 @@ export function createInspector(deps: InspectorDependencies): Inspector {
     x: number,
     y: number,
   ): Promise<void> {
+    if (!canOpenInIde()) {
+      toastError(OPEN_EDITOR_REQUIRES_PLUGIN);
+      return;
+    }
     const resolvedChain = await safeResolveChain(rawChain);
     if (disposed) return;
     const items: MenuItem[] = resolvedChain.map((entry) => ({

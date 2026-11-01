@@ -4,6 +4,10 @@
  * Every change is written through `useSettings` (normalized + chrome.storage),
  * so there is no save button: selects and checkboxes save immediately, text
  * fields debounce or commit on blur, and a small header badge confirms writes.
+ *
+ * The page is split into a sticky section nav and three groups of cards:
+ * how the shortcut behaves, tools it talks to, and advanced/about. Numbered
+ * cards follow the order a new user would read them in.
  */
 
 import {
@@ -14,7 +18,6 @@ import {
   type FocusEvent,
 } from "react"
 
-import { EDITOR_PRESETS, isEditorPresetId } from "./lib/editor"
 import { normalizeOrigin } from "./lib/origin"
 import { createDefaultSettings, type Settings } from "./lib/settings"
 import {
@@ -38,8 +41,6 @@ import { useSettings } from "./lib/ui/use-settings"
 import "./lib/ui/options.css"
 
 const VERSION_FALLBACK = "0.0.0"
-const CUSTOM_TEMPLATE_SEED = "vscode://file/{path}:{line}:{column}"
-const PLACEHOLDER_TEXT = "{path}, {file}, {fileUri}, {line} and {column}"
 const FALLBACK_MODIFIERS: readonly ModifierKey[] = ["alt"]
 
 const MODIFIER_LABELS: Record<ModifierKey, string> = {
@@ -58,22 +59,22 @@ const MODIFIER_DETAILS: Record<ModifierKey, string> = {
 
 const OPEN_MODE_INFO: Record<OpenMode, { label: string; detail: string }> = {
   component: {
-    label: "Component (default)",
-    detail: "Open the nearest component's JSX usage site.",
+    label: "Component",
+    detail: "Open the nearest component's JSX usage site (default).",
   },
   element: {
     label: "Element",
     detail: "Open the clicked DOM element's own JSX site.",
   },
   menu: {
-    label: "Menu",
+    label: "Chain picker",
     detail: "Open the component chain picker on left click.",
   },
 }
 
 const THEME_INFO: Record<ThemeMode, { label: string; detail: string }> = {
   dark: {
-    label: "Dark (default)",
+    label: "Dark",
     detail: "Blue-on-black overlay, matching the Vite plugin's original design.",
   },
   light: {
@@ -85,7 +86,7 @@ const THEME_INFO: Record<ThemeMode, { label: string; detail: string }> = {
 const ACTION_INFO: Record<ClickAction, { label: string; detail: string }> = {
   open: {
     label: "Open in IDE",
-    detail: "Open the source location in the configured editor.",
+    detail: "Open the source in your IDE through the Vite plugin.",
   },
   "copy-file": {
     label: "Copy file name",
@@ -116,7 +117,10 @@ interface RootRow {
 }
 
 function normalizeRootPath(value: string): string {
-  return normalizeSlashes(value.trim()).replace(/\/+$/, "")
+  const normalized = normalizeSlashes(value.trim())
+  let end = normalized.length
+  while (end > 0 && normalized[end - 1] === "/") end -= 1
+  return normalized.slice(0, end)
 }
 
 function extensionVersion(): string {
@@ -130,29 +134,70 @@ function extensionVersion(): string {
   }
 }
 
+const SECTIONS = [
+  {
+    group: "How it behaves",
+    links: [
+      { id: "activation", label: "Shortcut & activation" },
+      { id: "actions", label: "Click actions" },
+      { id: "appearance", label: "Appearance" },
+    ],
+  },
+  {
+    group: "Connected tools",
+    links: [
+      { id: "plugin", label: "Vite plugin" },
+      { id: "roots", label: "Project roots" },
+    ],
+  },
+  {
+    group: "More",
+    links: [
+      { id: "advanced", label: "Advanced" },
+      { id: "about", label: "About" },
+    ],
+  },
+] as const
+
 function Options() {
   const { settings, save, loaded } = useSettings()
 
   const [saveState, setSaveState] = useState<SaveState>("idle")
   const [notice, setNotice] = useState<string | null>(null)
-  const [templateDraft, setTemplateDraft] = useState("")
   const [rows, setRows] = useState<RootRow[]>([])
   const [rowsLoaded, setRowsLoaded] = useState(false)
   const [resetPending, setResetPending] = useState(false)
+  const [activeSection, setActiveSection] = useState<string>("activation")
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const templateFocusedRef = useRef(false)
   const rowKeyRef = useRef(0)
   const rowsRef = useRef<RootRow[]>(rows)
   rowsRef.current = rows
 
   const version = extensionVersion()
-  const activePreset =
-    EDITOR_PRESETS.find((preset) => preset.id === settings.editor.preset) ?? null
-  const presetHint = activePreset?.hint ?? null
-  const presetTemplate =
-    activePreset !== null && activePreset.id !== "custom" ? activePreset.template : null
+
+  // Keep the section index in sync with the card the reader is looking at.
+  useEffect(() => {
+    const ids = SECTIONS.flatMap((group) => group.links.map((link) => link.id))
+    const elements = ids
+      .map((id) => document.getElementById(id))
+      .filter((element): element is HTMLElement => element !== null)
+    if (elements.length === 0 || typeof IntersectionObserver === "undefined") return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)
+        const first = visible[0]
+        if (first !== undefined) setActiveSection(first.target.id)
+      },
+      { rootMargin: "-104px 0px -55% 0px", threshold: 0 },
+    )
+    for (const element of elements) observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
 
   function createRow(origin = "", root = ""): RootRow {
     rowKeyRef.current += 1
@@ -310,44 +355,6 @@ function Options() {
     void commitRoots(rowsRef.current)
   }
 
-  /* ------------------------------------------------------------------ editor */
-
-  useEffect(() => {
-    if (templateFocusedRef.current) return
-    setTemplateDraft(settings.editor.template)
-  }, [settings.editor.preset, settings.editor.template])
-
-  // While the custom template input is focused, save shortly after typing
-  // stops. Blur (below) commits immediately as a backstop.
-  useEffect(() => {
-    if (!loaded || !templateFocusedRef.current) return
-    const trimmed = templateDraft.trim()
-    if (trimmed === "" || trimmed === settings.editor.template) return
-    const timer = setTimeout(() => {
-      void persist({ ...settings, editor: { preset: "custom", template: trimmed } })
-    }, 700)
-    return () => clearTimeout(timer)
-  }, [templateDraft, loaded, settings, persist])
-
-  function commitTemplate(): void {
-    const trimmed = templateDraft.trim()
-    if (trimmed === "" || trimmed === settings.editor.template) return
-    void persist({ ...settings, editor: { preset: "custom", template: trimmed } })
-  }
-
-  function changeEditorPreset(value: string): void {
-    if (!isEditorPresetId(value)) return
-    if (value === "custom") {
-      const template =
-        settings.editor.template.trim() === ""
-          ? CUSTOM_TEMPLATE_SEED
-          : settings.editor.template
-      void persist({ ...settings, editor: { preset: "custom", template } })
-      return
-    }
-    void persist({ ...settings, editor: { preset: value, template: "" } })
-  }
-
   /* --------------------------------------------------------------- activation */
 
   function toggleModifier(key: ModifierKey, checked: boolean): void {
@@ -376,6 +383,11 @@ function Options() {
     void persist({ ...settings, theme: value as ThemeMode })
   }
 
+  function changeSettingsSource(value: string): void {
+    if (value !== "plugin" && value !== "extension") return
+    void persist({ ...settings, settingsSource: value })
+  }
+
   function toggleAction(action: ClickAction, checked: boolean): void {
     let next: ClickAction[]
     if (checked) {
@@ -394,6 +406,20 @@ function Options() {
     void persist({ ...settings, clickActions: next })
   }
 
+  /** Move a checked action one step earlier/later in the picker. */
+  function moveAction(action: ClickAction, direction: -1 | 1): void {
+    const current = settings.clickActions
+    const from = current.indexOf(action)
+    const to = from + direction
+    if (from === -1 || to < 0 || to >= current.length) return
+    const target = current[to]
+    if (target === undefined) return
+    const next = [...current]
+    next[from] = target
+    next[to] = action
+    void persist({ ...settings, clickActions: next })
+  }
+
   async function resetAllSettings(): Promise<void> {
     setResetPending(false)
     const defaults = createDefaultSettings()
@@ -402,501 +428,680 @@ function Options() {
     setRows(
       Object.entries(defaults.projectRoots).map(([origin, root]) => createRow(origin, root)),
     )
-    setTemplateDraft(defaults.editor.template)
     showNotice("All settings were reset to their defaults.")
   }
 
+  const modifiers =
+    settings.keyboard.length > 0
+      ? settings.keyboard.map((key) => MODIFIER_LABELS[key]).join(" + ")
+      : "Alt"
+
   return (
-    <main className="page">
-      <header className="page-header">
-        <div className="page-header__brand">
-          <h1 className="page-header__title">tab-to-components</h1>
-          <p className="page-header__subtitle">
-            Extension settings · v{version} · changes save automatically
-          </p>
-        </div>
-        <div className="page-header__meta">
-          <span
-            className={`save-state save-state--${saveState}`}
-            role="status"
-            aria-live="polite"
-          >
-            {saveState === "saving"
-              ? "Saving…"
-              : saveState === "saved"
-                ? "Saved"
-                : saveState === "error"
-                  ? "Could not save"
-                  : ""}
-          </span>
+    <div className="shell">
+      <header className="topbar">
+        <div className="topbar__inner">
+          <div className="topbar__brand">
+            <span className="brand-mark" aria-hidden="true">
+              ttc
+            </span>
+            <div className="topbar__text">
+              <h1 className="topbar__title">tab-to-components</h1>
+              <p className="topbar__subtitle">
+                Browser extension settings
+                <span className="topbar__dot" aria-hidden="true">
+                  ·
+                </span>
+                v{version}
+              </p>
+            </div>
+          </div>
+          <div className="topbar__meta">
+            <span
+              className={`save-state save-state--${saveState}`}
+              role="status"
+              aria-live="polite"
+            >
+              {saveState === "saving"
+                ? "Saving…"
+                : saveState === "saved"
+                  ? "Saved"
+                  : saveState === "error"
+                    ? "Could not save"
+                    : "Changes save automatically"}
+            </span>
+          </div>
         </div>
       </header>
 
+      <main className="page">
+        <aside className="sidebar">
+          <nav className="toc" aria-label="Settings sections">
+            {SECTIONS.map((section) => (
+              <div className="toc__group" key={section.group}>
+                <p className="toc__label">{section.group}</p>
+                <ul className="toc__list">
+                  {section.links.map((link) => (
+                    <li key={link.id}>
+                      <a
+                        className="toc__link"
+                        href={`#${link.id}`}
+                        aria-current={link.id === activeSection ? "true" : undefined}
+                      >
+                        {link.label}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </nav>
+          <p className="sidebar__note">
+            The extension only runs on <code>localhost</code> and{" "}
+            <code>127.0.0.1</code> pages.
+          </p>
+        </aside>
+
+        <div className="content">
+          <section className="hero" aria-labelledby="hero-title">
+            <div className="hero__text">
+              <p className="hero__eyebrow">Quick start</p>
+              <h2 className="hero__title" id="hero-title">
+                Hold <kbd className="kbd">{modifiers}</kbd> and click any element
+              </h2>
+              <p className="hero__detail">
+                A small outline and label appear under the cursor; the click opens or
+                copies that element&apos;s JSX source.
+              </p>
+            </div>
+            <ol className="steps">
+              <li className="steps__item">
+                <span className="steps__index" aria-hidden="true">
+                  1
+                </span>
+                <span className="steps__text">
+                  <strong>Hold the modifier</strong> while hovering an element on a
+                  localhost dev server.
+                </span>
+              </li>
+              <li className="steps__item">
+                <span className="steps__index" aria-hidden="true">
+                  2
+                </span>
+                <span className="steps__text">
+                  <strong>Click it.</strong> The configured action runs — open the
+                  source, or show the action picker first.
+                </span>
+              </li>
+              <li className="steps__item">
+                <span className="steps__index" aria-hidden="true">
+                  3
+                </span>
+                <span className="steps__text">
+                  <strong>Right click</strong> with the modifier to browse the whole
+                  component chain.
+                </span>
+              </li>
+            </ol>
+          </section>
+
+          {/* ------------------------------------------------------- activation */}
+          <section className="card" id="activation" aria-labelledby="activation-title">
+            <header className="card__head">
+              <span className="card__badge" aria-hidden="true">
+                1
+              </span>
+              <div>
+                <h2 className="card__title" id="activation-title">
+                  Shortcut &amp; activation
+                </h2>
+                <p className="card__description">
+                  Choose the keys that arm the inspector and what a left click does.
+                </p>
+              </div>
+            </header>
+
+            <fieldset className="group">
+              <legend className="group__title">Modifier keys</legend>
+              <p className="group__hint">
+                Every checked key must be held together. Keep one checked for the
+                simplest setup.
+              </p>
+              <div className="chip-grid">
+                {MODIFIER_KEYS.map((key) => (
+                  <label className="chip" key={key}>
+                    <input
+                      type="checkbox"
+                      className="chip__input"
+                      checked={settings.keyboard.includes(key)}
+                      disabled={!loaded}
+                      onChange={(event) => {
+                        toggleModifier(key, event.target.checked)
+                      }}
+                    />
+                    <span className="chip__check" aria-hidden="true" />
+                    <span className="chip__body">
+                      <span className="chip__label">{MODIFIER_LABELS[key]}</span>
+                      <span className="chip__detail">{MODIFIER_DETAILS[key]}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+
+            <fieldset className="group">
+              <legend className="group__title">What {modifiers} + click opens</legend>
+              <div className="option-grid">
+                {OPEN_MODES.map((mode) => (
+                  <label className="option-card" key={mode}>
+                    <input
+                      type="radio"
+                      className="option-card__input"
+                      name="open-mode"
+                      value={mode}
+                      checked={settings.open === mode}
+                      disabled={!loaded}
+                      onChange={(event) => {
+                        changeOpenMode(event.target.value)
+                      }}
+                    />
+                    <span className="option-card__dot" aria-hidden="true" />
+                    <span className="option-card__body">
+                      <span className="option-card__title">{OPEN_MODE_INFO[mode].label}</span>
+                      <span className="option-card__detail">
+                        {OPEN_MODE_INFO[mode].detail}
+                      </span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+
+            <label className="switch-row">
+              <span className="switch-row__text">
+                <span className="switch-row__label">
+                  Component chain on modifier + right click
+                </span>
+                <span className="switch-row__detail">
+                  Opens the component chain picker so you can jump to any ancestor.
+                </span>
+              </span>
+              <input
+                type="checkbox"
+                className="switch"
+                role="switch"
+                checked={settings.menu}
+                disabled={!loaded}
+                onChange={(event) => {
+                  void persist({ ...settings, menu: event.target.checked })
+                }}
+              />
+            </label>
+          </section>
+
+          {/* ---------------------------------------------------------- actions */}
+          <section className="card" id="actions" aria-labelledby="actions-title">
+            <header className="card__head">
+              <span className="card__badge" aria-hidden="true">
+                2
+              </span>
+              <div>
+                <h2 className="card__title" id="actions-title">
+                  Click actions
+                </h2>
+                <p className="card__description">
+                  Checked actions appear in the picker in the numbered order. Keep a
+                  single action checked to run it instantly and skip the picker.
+                </p>
+              </div>
+            </header>
+
+            <ul className="action-list">
+              {CLICK_ACTIONS.map((action) => {
+                const order = settings.clickActions.indexOf(action)
+                const checked = order !== -1
+                return (
+                  <li
+                    key={action}
+                    className={checked ? "action-row action-row--on" : "action-row"}
+                  >
+                    <label className="check action-row__check">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        disabled={!loaded}
+                        onChange={(event) => {
+                          toggleAction(action, event.target.checked)
+                        }}
+                      />
+                      <span
+                        className={
+                          checked ? "action-row__order" : "action-row__order action-row__order--empty"
+                        }
+                        aria-hidden="true"
+                      >
+                        {checked ? order + 1 : ""}
+                      </span>
+                      <span className="check__text">
+                        <span className="check__label">{ACTION_INFO[action].label}</span>
+                        <span className="check__detail">
+                          {ACTION_INFO[action].detail}
+                        </span>
+                      </span>
+                    </label>
+
+                    <div className="action-row__move">
+                      <button
+                        type="button"
+                        className="icon-btn"
+                        aria-label={`Move ${ACTION_INFO[action].label} earlier`}
+                        disabled={!loaded || !checked || order <= 0}
+                        onClick={() => {
+                          moveAction(action, -1)
+                        }}
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        className="icon-btn"
+                        aria-label={`Move ${ACTION_INFO[action].label} later`}
+                        disabled={
+                          !loaded || !checked || order === settings.clickActions.length - 1
+                        }
+                        onClick={() => {
+                          moveAction(action, 1)
+                        }}
+                      >
+                        ↓
+                      </button>
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+            <p className="field__detail">
+              “Open in IDE” is hidden automatically when the page does not run the Vite
+              plugin.
+            </p>
+          </section>
+
+          {/* ------------------------------------------------------- appearance */}
+          <section className="card" id="appearance" aria-labelledby="appearance-title">
+            <header className="card__head">
+              <span className="card__badge" aria-hidden="true">
+                3
+              </span>
+              <div>
+                <h2 className="card__title" id="appearance-title">
+                  Appearance
+                </h2>
+                <p className="card__description">
+                  The overlay theme is shared by the outline, label and action menu.
+                </p>
+              </div>
+            </header>
+
+            <fieldset className="group">
+              <legend className="group__title">Overlay theme</legend>
+              <div className="option-grid option-grid--two">
+                {THEME_MODES.map((theme) => (
+                  <label className="option-card" key={theme}>
+                    <input
+                      type="radio"
+                      className="option-card__input"
+                      name="theme"
+                      value={theme}
+                      checked={settings.theme === theme}
+                      disabled={!loaded}
+                      onChange={(event) => {
+                        changeTheme(event.target.value)
+                      }}
+                    />
+                    <span
+                      className={`theme-swatch theme-swatch--${theme}`}
+                      aria-hidden="true"
+                    />
+                    <span className="option-card__body">
+                      <span className="option-card__title">{THEME_INFO[theme].label}</span>
+                      <span className="option-card__detail">
+                        {THEME_INFO[theme].detail}
+                      </span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          </section>
+
+          {/* ------------------------------------------------------------ plugin */}
+          <section className="card" id="plugin" aria-labelledby="plugin-title">
+            <header className="card__head">
+              <span className="card__badge" aria-hidden="true">
+                4
+              </span>
+              <div>
+                <h2 className="card__title" id="plugin-title">
+                  Vite plugin
+                </h2>
+                <p className="card__description">
+                  When the page also runs the tab-to-components Vite plugin, choose whose
+                  settings win.
+                </p>
+              </div>
+            </header>
+
+            <fieldset className="group">
+              <legend className="group__title">When both are installed</legend>
+              <div className="option-grid option-grid--two">
+                <label className="option-card">
+                  <input
+                    type="radio"
+                    className="option-card__input"
+                    name="settings-source"
+                    value="plugin"
+                    checked={settings.settingsSource === "plugin"}
+                    disabled={!loaded}
+                    onChange={(event) => {
+                      changeSettingsSource(event.target.value)
+                    }}
+                  />
+                  <span className="option-card__dot" aria-hidden="true" />
+                  <span className="option-card__body">
+                    <span className="option-card__title">Use the plugin settings</span>
+                    <span className="option-card__detail">
+                      Keyboard, open mode, click actions and theme follow the plugin;
+                      the extension stays idle while the plugin&apos;s overlay is on the
+                      page.
+                    </span>
+                  </span>
+                </label>
+
+                <label className="option-card">
+                  <input
+                    type="radio"
+                    className="option-card__input"
+                    name="settings-source"
+                    value="extension"
+                    checked={settings.settingsSource === "extension"}
+                    disabled={!loaded}
+                    onChange={(event) => {
+                      changeSettingsSource(event.target.value)
+                    }}
+                  />
+                  <span className="option-card__dot" aria-hidden="true" />
+                  <span className="option-card__body">
+                    <span className="option-card__title">Use the extension settings</span>
+                    <span className="option-card__detail">
+                      The extension takes over with these settings and hides the
+                      plugin&apos;s overlay. “Open in IDE” still goes through the plugin.
+                    </span>
+                  </span>
+                </label>
+              </div>
+            </fieldset>
+
+            <div className="callout">
+              <p className="callout__title">How “Open in IDE” works</p>
+              <p className="callout__text">
+                The extension asks the dev server to open the file; the plugin chooses
+                the editor (<code>editor</code> option, <code>auto</code> by default).
+                Without the plugin the action is hidden, but source resolution and copy
+                actions keep working. The popup shows whether the plugin is connected
+                and repeats this choice for quick access.
+              </p>
+            </div>
+          </section>
+
+          {/* ----------------------------------------------------- project roots */}
+          <section className="card" id="roots" aria-labelledby="roots-title">
+            <header className="card__head">
+              <span className="card__badge" aria-hidden="true">
+                5
+              </span>
+              <div>
+                <h2 className="card__title" id="roots-title">
+                  Project roots
+                </h2>
+                <p className="card__description">
+                  Map an origin to the absolute path of the project on this machine,
+                  used when a source location only has a project-relative path.
+                </p>
+              </div>
+            </header>
+
+            <div className="root-list">
+              {rows.length === 0 && (
+                <div className="empty-state">
+                  <p className="empty-state__title">No project roots yet</p>
+                  <p className="empty-state__text">
+                    Add one when “Copy full path” needs an absolute path for a
+                    project-relative source location, for example{" "}
+                    <code>localhost:5173</code> → <code>D:/projects/my-app</code>.
+                  </p>
+                </div>
+              )}
+              {rows.map((row) => (
+                <div key={row.key} className="root-row" onBlur={handleRootRowBlur}>
+                  <div className="field">
+                    <label className="field__label" htmlFor={`root-origin-${row.key}`}>
+                      Origin
+                    </label>
+                    <input
+                      id={`root-origin-${row.key}`}
+                      type="text"
+                      value={row.origin}
+                      disabled={!loaded}
+                      spellCheck={false}
+                      placeholder="localhost:5173"
+                      aria-invalid={row.originError !== null}
+                      aria-describedby={
+                        row.originError !== null
+                          ? `root-origin-error-${row.key}`
+                          : undefined
+                      }
+                      onChange={(event) => {
+                        updateRootRow(row.key, { origin: event.target.value })
+                      }}
+                    />
+                    {row.originError !== null && (
+                      <p className="field__error" id={`root-origin-error-${row.key}`}>
+                        {row.originError}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="field">
+                    <label className="field__label" htmlFor={`root-path-${row.key}`}>
+                      Absolute project path
+                    </label>
+                    <input
+                      id={`root-path-${row.key}`}
+                      type="text"
+                      value={row.root}
+                      disabled={!loaded}
+                      spellCheck={false}
+                      placeholder="D:/projects/my-app"
+                      aria-invalid={row.rootError !== null}
+                      aria-describedby={
+                        row.rootError !== null ? `root-path-error-${row.key}` : undefined
+                      }
+                      onChange={(event) => {
+                        updateRootRow(row.key, { root: event.target.value })
+                      }}
+                    />
+                    {row.rootError !== null && (
+                      <p className="field__error" id={`root-path-error-${row.key}`}>
+                        {row.rootError}
+                      </p>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    className="icon-btn root-row__remove"
+                    disabled={!loaded}
+                    aria-label="Remove project root"
+                    title="Remove project root"
+                    onClick={() => {
+                      removeRootRow(row.key)
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <div className="actions-row">
+              <button
+                type="button"
+                className="btn"
+                disabled={!loaded}
+                onClick={addRootRow}
+              >
+                + Add project root
+              </button>
+              <p className="field__detail">
+                Rows save when you leave them. Invalid origins or paths are highlighted
+                and not stored.
+              </p>
+            </div>
+          </section>
+
+          {/* -------------------------------------------------------- advanced */}
+          <section className="card" id="advanced" aria-labelledby="advanced-title">
+            <header className="card__head">
+              <div>
+                <h2 className="card__title" id="advanced-title">
+                  Advanced
+                </h2>
+                <p className="card__description">
+                  Diagnostics and a clean slate. Settings are stored in{" "}
+                  <code>chrome.storage.local</code>.
+                </p>
+              </div>
+            </header>
+
+            <label className="switch-row">
+              <span className="switch-row__text">
+                <span className="switch-row__label">Verbose console logging</span>
+                <span className="switch-row__detail">
+                  Log inspector decisions to the page console for troubleshooting.
+                </span>
+              </span>
+              <input
+                type="checkbox"
+                className="switch"
+                role="switch"
+                checked={settings.debug}
+                disabled={!loaded}
+                onChange={(event) => {
+                  void persist({ ...settings, debug: event.target.checked })
+                }}
+              />
+            </label>
+
+            <div className="danger-zone">
+              <div className="danger-zone__text">
+                <p className="danger-zone__title">Reset everything</p>
+                <p className="danger-zone__detail">
+                  Restores the default shortcut, actions, theme, plugin choice and
+                  removes all project roots.
+                </p>
+              </div>
+              {resetPending ? (
+                <div className="reset-confirm">
+                  <p>Reset every setting to its defaults? Project roots will be lost.</p>
+                  <button
+                    type="button"
+                    className="btn btn--danger btn--small"
+                    onClick={() => {
+                      void resetAllSettings()
+                    }}
+                  >
+                    Yes, reset
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--small"
+                    onClick={() => {
+                      setResetPending(false)
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn--danger-ghost btn--small"
+                  disabled={!loaded}
+                  onClick={() => {
+                    setResetPending(true)
+                  }}
+                >
+                  Reset to defaults
+                </button>
+              )}
+            </div>
+          </section>
+
+          {/* ------------------------------------------------------------- about */}
+          <section className="card" id="about" aria-labelledby="about-title">
+            <header className="card__head">
+              <div>
+                <h2 className="card__title" id="about-title">
+                  About
+                </h2>
+                <p className="card__description">
+                  tab-to-components resolves the JSX source behind any React element on
+                  a local dev server.
+                </p>
+              </div>
+            </header>
+
+            <ul className="about-list">
+              <li>
+                “Open in IDE” is delegated to the Vite plugin&apos;s dev-server
+                endpoint, so the editor always launches on the machine running the dev
+                server.
+              </li>
+              <li>
+                Copy actions work without the plugin: the inspector reads React&apos;s
+                development source metadata and Vite&apos;s dev-server source maps
+                directly.
+              </li>
+              <li>
+                React 19 only exposes source locations when the dev server serves
+                source maps. Without them the overlay can detect React but cannot
+                resolve a file.
+              </li>
+            </ul>
+
+            <p className="field__detail">
+              Version {version} ·{" "}
+              <a
+                href="https://github.com/r48n34/tab-to-components"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Project on GitHub
+              </a>
+            </p>
+          </section>
+
+          <footer className="page-footer">
+            Hold {modifiers} and click an element on a localhost dev server to start.
+          </footer>
+        </div>
+      </main>
+
       {notice !== null && (
-        <p className="notice" role="status">
+        <p className="toast" role="status" aria-live="polite">
           {notice}
         </p>
       )}
-
-      {/* ------------------------------------------------------------ activation */}
-      <section className="card" aria-labelledby="activation-title">
-        <h2 className="card__title" id="activation-title">
-          Activation
-        </h2>
-        <p className="card__description">
-          The content script only runs on <code>localhost</code> and{" "}
-          <code>127.0.0.1</code> pages, so these settings never affect normal browsing.
-        </p>
-
-        <fieldset className="group">
-          <legend className="group__title">Modifier keys</legend>
-          <p className="group__hint">
-            All checked modifiers must be held together. Keep one checked for the
-            simplest setup.
-          </p>
-          <div className="check-grid">
-            {MODIFIER_KEYS.map((key) => (
-              <label key={key} className="check">
-                <input
-                  type="checkbox"
-                  checked={settings.keyboard.includes(key)}
-                  disabled={!loaded}
-                  onChange={(event) => {
-                    toggleModifier(key, event.target.checked)
-                  }}
-                />
-                <span className="check__text">
-                  <span className="check__label">{MODIFIER_LABELS[key]}</span>
-                  <span className="check__detail">{MODIFIER_DETAILS[key]}</span>
-                </span>
-              </label>
-            ))}
-          </div>
-        </fieldset>
-
-        <div className="field">
-          <label className="field__label" htmlFor="ttc-open-mode">
-            Modifier + left click
-          </label>
-          <select
-            id="ttc-open-mode"
-            value={settings.open}
-            disabled={!loaded}
-            onChange={(event) => {
-              changeOpenMode(event.target.value)
-            }}
-          >
-            {OPEN_MODES.map((mode) => (
-              <option key={mode} value={mode}>
-                {OPEN_MODE_INFO[mode].label}
-              </option>
-            ))}
-          </select>
-          <p className="field__detail">{OPEN_MODE_INFO[settings.open].detail}</p>
-        </div>
-
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={settings.menu}
-            disabled={!loaded}
-            onChange={(event) => {
-              void persist({ ...settings, menu: event.target.checked })
-            }}
-          />
-          <span className="check__text">
-            <span className="check__label">Component chain on right click</span>
-            <span className="check__detail">
-              Modifier + right click opens the component chain picker.
-            </span>
-          </span>
-        </label>
-      </section>
-
-      {/* --------------------------------------------------------------- actions */}
-      <section className="card" aria-labelledby="actions-title">
-        <h2 className="card__title" id="actions-title">
-          Click actions
-        </h2>
-        <p className="card__description">
-          Checked actions appear in the modifier + left-click picker, in the numbered
-          order. Keep a single action checked to skip the picker and run it instantly.
-        </p>
-        <ul className="action-list">
-          {CLICK_ACTIONS.map((action) => {
-            const order = settings.clickActions.indexOf(action)
-            const checked = order !== -1
-            return (
-              <li key={action} className="action-row">
-                <label className="check">
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    disabled={!loaded}
-                    onChange={(event) => {
-                      toggleAction(action, event.target.checked)
-                    }}
-                  />
-                  <span className="check__text">
-                    <span className="check__label">{ACTION_INFO[action].label}</span>
-                    <span className="check__detail">{ACTION_INFO[action].detail}</span>
-                  </span>
-                </label>
-                <span
-                  className={`action-row__order${checked ? "" : " action-row__order--empty"}`}
-                  aria-label={checked ? `Position ${order + 1}` : undefined}
-                  aria-hidden={checked ? undefined : true}
-                >
-                  {checked ? order + 1 : ""}
-                </span>
-              </li>
-            )
-          })}
-        </ul>
-      </section>
-
-      {/* ----------------------------------------------------------- appearance */}
-      <section className="card" aria-labelledby="appearance-title">
-        <h2 className="card__title" id="appearance-title">
-          Appearance
-        </h2>
-        <div className="field">
-          <label className="field__label" htmlFor="ttc-theme">
-            Overlay theme
-          </label>
-          <select
-            id="ttc-theme"
-            value={settings.theme}
-            disabled={!loaded}
-            onChange={(event) => {
-              changeTheme(event.target.value)
-            }}
-          >
-            {THEME_MODES.map((theme) => (
-              <option key={theme} value={theme}>
-                {THEME_INFO[theme].label}
-              </option>
-            ))}
-          </select>
-          <p className="field__detail">{THEME_INFO[settings.theme].detail}</p>
-        </div>
-      </section>
-
-      {/* --------------------------------------------------------------- editor */}
-      <section className="card" aria-labelledby="editor-title">
-        <h2 className="card__title" id="editor-title">
-          Editor
-        </h2>
-        <p className="card__description">
-          Editors open through the URL schemes they register with the operating system;
-          the extension never runs local commands.
-        </p>
-
-        <div className="field">
-          <label className="field__label" htmlFor="ttc-editor-preset">
-            Editor preset
-          </label>
-          <select
-            id="ttc-editor-preset"
-            value={settings.editor.preset}
-            disabled={!loaded}
-            onChange={(event) => {
-              changeEditorPreset(event.target.value)
-            }}
-          >
-            {EDITOR_PRESETS.map((preset) => (
-              <option key={preset.id} value={preset.id}>
-                {preset.label}
-              </option>
-            ))}
-          </select>
-          {presetHint !== null && <p className="field__detail">{presetHint}</p>}
-          {presetTemplate !== null && (
-            <p className="field__detail">
-              URL template: <code>{presetTemplate}</code>
-            </p>
-          )}
-          <p className="field__detail">
-            Custom templates support the {PLACEHOLDER_TEXT} placeholders.
-          </p>
-        </div>
-
-        {settings.editor.preset === "custom" && (
-          <div className="field">
-            <label className="field__label" htmlFor="ttc-editor-template">
-              Custom URL template
-            </label>
-            <input
-              id="ttc-editor-template"
-              type="text"
-              value={templateDraft}
-              disabled={!loaded}
-              spellCheck={false}
-              placeholder={CUSTOM_TEMPLATE_SEED}
-              aria-describedby="ttc-editor-template-help"
-              onFocus={() => {
-                templateFocusedRef.current = true
-              }}
-              onBlur={() => {
-                templateFocusedRef.current = false
-                commitTemplate()
-              }}
-              onChange={(event) => {
-                setTemplateDraft(event.target.value)
-              }}
-            />
-            <p className="field__detail" id="ttc-editor-template-help">
-              Supported placeholders: {PLACEHOLDER_TEXT}. An empty template falls back
-              to the VS Code preset.
-            </p>
-            {templateDraft.trim() === "" && (
-              <p className="field__error">
-                A custom template cannot be empty, so the VS Code preset will be used.
-              </p>
-            )}
-          </div>
-        )}
-      </section>
-
-      {/* -------------------------------------------------------- project roots */}
-      <section className="card" aria-labelledby="roots-title">
-        <h2 className="card__title" id="roots-title">
-          Project roots
-        </h2>
-        <p className="card__description">
-          Map an origin to the absolute path of the project on this machine. Used when
-          a source location only has a project-relative path.
-        </p>
-
-        <div className="root-list">
-          {rows.length === 0 && (
-            <p className="field__detail">
-              No project roots yet. Add one when an editor template needs{" "}
-              <code>{"{path}"}</code> or <code>{"{fileUri}"}</code>.
-            </p>
-          )}
-          {rows.map((row) => (
-            <div
-              key={row.key}
-              className="root-row"
-              onBlur={handleRootRowBlur}
-            >
-              <div className="field">
-                <label className="field__label" htmlFor={`root-origin-${row.key}`}>
-                  Origin
-                </label>
-                <input
-                  id={`root-origin-${row.key}`}
-                  type="text"
-                  value={row.origin}
-                  disabled={!loaded}
-                  spellCheck={false}
-                  placeholder="localhost:5173"
-                  aria-invalid={row.originError !== null}
-                  aria-describedby={
-                    row.originError !== null
-                      ? `root-origin-error-${row.key}`
-                      : undefined
-                  }
-                  onChange={(event) => {
-                    updateRootRow(row.key, { origin: event.target.value })
-                  }}
-                />
-                {row.originError !== null && (
-                  <p className="field__error" id={`root-origin-error-${row.key}`}>
-                    {row.originError}
-                  </p>
-                )}
-              </div>
-
-              <div className="field">
-                <label className="field__label" htmlFor={`root-path-${row.key}`}>
-                  Absolute project path
-                </label>
-                <input
-                  id={`root-path-${row.key}`}
-                  type="text"
-                  value={row.root}
-                  disabled={!loaded}
-                  spellCheck={false}
-                  placeholder="D:/projects/my-app"
-                  aria-invalid={row.rootError !== null}
-                  aria-describedby={
-                    row.rootError !== null ? `root-path-error-${row.key}` : undefined
-                  }
-                  onChange={(event) => {
-                    updateRootRow(row.key, { root: event.target.value })
-                  }}
-                />
-                {row.rootError !== null && (
-                  <p className="field__error" id={`root-path-error-${row.key}`}>
-                    {row.rootError}
-                  </p>
-                )}
-              </div>
-
-              <button
-                type="button"
-                className="btn btn--small root-row__remove"
-                disabled={!loaded}
-                aria-label="Remove project root"
-                onClick={() => {
-                  removeRootRow(row.key)
-                }}
-              >
-                Remove
-              </button>
-            </div>
-          ))}
-        </div>
-
-        <div className="actions-row">
-          <button
-            type="button"
-            className="btn"
-            disabled={!loaded}
-            onClick={addRootRow}
-          >
-            Add root
-          </button>
-          <p className="field__detail">
-            Rows save when you leave them. Invalid origins or paths are highlighted and
-            not stored.
-          </p>
-        </div>
-      </section>
-
-      {/* -------------------------------------------------------------- advanced */}
-      <section className="card" aria-labelledby="advanced-title">
-        <h2 className="card__title" id="advanced-title">
-          Advanced
-        </h2>
-
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={settings.showWhenVitePluginActive}
-            disabled={!loaded}
-            onChange={(event) => {
-              void persist({
-                ...settings,
-                showWhenVitePluginActive: event.target.checked,
-              })
-            }}
-          />
-          <span className="check__text">
-            <span className="check__label">Take over from the Vite plugin overlay</span>
-            <span className="check__detail">
-              Keep the inspector active even when the Vite plugin's own overlay is on
-              the page, and hide that overlay so one Alt+click opens the source through
-              the extension. Off by default so the two overlays never fight; the other
-              option is the plugin's <code>overlay: false</code> setting.
-            </span>
-          </span>
-        </label>
-
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={settings.debug}
-            disabled={!loaded}
-            onChange={(event) => {
-              void persist({ ...settings, debug: event.target.checked })
-            }}
-          />
-          <span className="check__text">
-            <span className="check__label">Verbose console logging</span>
-            <span className="check__detail">
-              Log inspector decisions to the page console for troubleshooting.
-            </span>
-          </span>
-        </label>
-
-        <div className="actions-row">
-          {resetPending ? (
-            <div className="reset-confirm">
-              <p>
-                Reset every setting to its defaults? Project roots and the custom editor
-                template will be lost.
-              </p>
-              <button
-                type="button"
-                className="btn btn--danger btn--small"
-                onClick={() => {
-                  void resetAllSettings()
-                }}
-              >
-                Yes, reset
-              </button>
-              <button
-                type="button"
-                className="btn btn--small"
-                onClick={() => {
-                  setResetPending(false)
-                }}
-              >
-                Cancel
-              </button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              className="btn"
-              disabled={!loaded}
-              onClick={() => {
-                setResetPending(true)
-              }}
-            >
-              Reset to defaults
-            </button>
-          )}
-        </div>
-      </section>
-
-      {/* ----------------------------------------------------------------- about */}
-      <section className="card" aria-labelledby="about-title">
-        <h2 className="card__title" id="about-title">
-          About
-        </h2>
-        <p className="card__description">
-          tab-to-components opens the JSX source behind any React element on a local dev
-          server — no Vite plugin required.
-        </p>
-        <ul className="about-list">
-          <li>
-            Works without the Vite plugin: the inspector reads React's development
-            source metadata and Vite's dev-server source maps directly.
-          </li>
-          <li>
-            React 19 only exposes source locations when the dev server serves source
-            maps. Without them the overlay can detect React but cannot resolve a file.
-          </li>
-          <li>
-            Editors open through their registered URL schemes (<code>vscode://</code>,{" "}
-            <code>cursor://</code>, <code>zed://</code>, …); the extension never runs
-            local commands.
-          </li>
-        </ul>
-        <p className="field__detail">
-          Hold {MODIFIER_LABELS[settings.keyboard[0] ?? "alt"]} and click an element on
-          a localhost dev server to start.
-        </p>
-        <p className="field__detail">
-          Version {version} ·{" "}
-          <a
-            href="https://github.com/r48n34/tab-to-components"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Project on GitHub
-          </a>
-        </p>
-      </section>
-
-      <footer className="page-footer">
-        tab-to-components · settings stored in <code>chrome.storage.local</code>
-      </footer>
-    </main>
+    </div>
   )
 }
 
