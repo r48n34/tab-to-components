@@ -6,6 +6,7 @@ import {
   sourceActionAvailable,
   sourceActionCopy,
   sourceActionDetail,
+  sourceActionIcon,
   sourceActionLabel,
 } from "../lib/actions";
 import { createLocation, type SourceLocation } from "../lib/source/location";
@@ -205,5 +206,17 @@ describe("sourceActionAvailable", () => {
       isHost: true,
     });
     expect(sourceActionAvailable("open", host, ROOT)).toBe(true);
+  });
+});
+
+describe("sourceActionIcon", () => {
+  it("gives every action the same menu icon as the Vite plugin", () => {
+    expect(ACTIONS.map((action) => [action, sourceActionIcon(action)])).toEqual([
+      ["open", "open"],
+      ["copy-file", "copy-file"],
+      ["copy-path", "copy-path"],
+      ["copy-full-path", "copy-full-path"],
+      ["copy-location", "copy-location"],
+    ]);
   });
 });

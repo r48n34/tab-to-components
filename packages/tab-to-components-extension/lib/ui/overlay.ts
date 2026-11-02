@@ -14,6 +14,7 @@
 
 import { formatNameLabel } from "../source/location";
 import type { ThemeMode } from "../types";
+import { createMenuIcon, type MenuIconName } from "./icons";
 
 /** Attribute on the light-DOM host element that owns the shadow root. */
 export const UI_ATTRIBUTE = "data-ttc-ui";
@@ -185,6 +186,16 @@ const STYLE_TEXT = `
 .ttc-menu-item[data-active] {
   background: var(--ttc-active);
 }
+.ttc-menu-icon {
+  flex: 0 0 auto;
+  align-self: center;
+  width: 14px;
+  height: 14px;
+  color: var(--ttc-muted);
+}
+.ttc-menu-item[data-active] .ttc-menu-icon {
+  color: var(--ttc-accent-text);
+}
 .ttc-menu-name {
   flex: 0 0 auto;
   color: var(--ttc-accent-text);
@@ -250,6 +261,8 @@ export interface MenuItem {
   detail: string;
   /** Optional `data-action` value exposing the row kind to tests. */
   action?: string;
+  /** Optional icon rendered before the label (decorative, see `icons.ts`). */
+  icon?: MenuIconName;
   /** Run when the row is clicked or activated with Enter/Space. */
   onActivate: () => void;
 }
@@ -465,6 +478,12 @@ export class Overlay {
       row.className = "ttc-menu-item";
       row.setAttribute("role", "menuitem");
       if (item.action !== undefined) row.setAttribute("data-action", item.action);
+
+      // The icon is decorative and has no text content, so it does not change
+      // the row's `textContent` contract (`Open in IDE  file:line:column`).
+      if (item.icon !== undefined) {
+        row.append(createMenuIcon(this.host.ownerDocument, item.icon));
+      }
 
       const label = this.host.ownerDocument.createElement("span");
       label.className = "ttc-menu-name";

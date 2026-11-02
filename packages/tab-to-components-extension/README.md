@@ -25,6 +25,12 @@ that plugin's dev-server endpoint instead of opening `vscode://` URLs itself.
 | <kbd>Alt</kbd> + right click | Component chain picker listing every JSX ancestor of the clicked element. |
 | After an action | A toast confirms the file opened or the text copied. |
 
+Each picker row starts with the same small line icon as the Vite plugin's menu
+— an arrow leaving a window for **Open in IDE**, a page for **Copy file name**,
+a folder for **Copy relative path**, a drive for **Copy full path**, a pin for
+the **file:line:column** location, and a stacked box for chain rows — so both
+pickers stay visually identical.
+
 The page's own click handler is suppressed only when the clicked element really
 has React source information, and no overlay DOM exists until the modifier is
 held.
@@ -210,10 +216,11 @@ The two can be used together. `settingsSource` decides which configuration wins:
   uses its own settings. **Open in IDE** still goes through the plugin either
   way.
 
-Switch it in the popup's **Settings source** select or in
-**Options → Advanced → When the Vite plugin is installed**. The popup's modifier
-select always edits the extension's stored settings; those only apply while the
-extension is the settings source (or on pages without the plugin).
+Switch it on the options page under **Vite plugin → When both are installed**
+(the toolbar popup does not offer it; its **Open settings** button opens that
+page). The popup's modifier select always edits the extension's stored
+settings; those only apply while the extension is the settings source (or on
+pages without the plugin).
 
 ## Troubleshooting
 
@@ -222,8 +229,7 @@ The popup says *"Vite plugin overlay active (idle)"*. That is the default
 (`settingsSource: "plugin"`): the extension yields to the plugin's overlay. To
 use the extension UI instead (both delegate Open in IDE to the plugin):
 
-- choose **Settings source → Extension** in the extension popup (or
-  **Options → Advanced**), or
+- choose **Use the extension settings** under **Options → Vite plugin**, or
 - set `overlay: false` in the plugin options (`tabToComponents({ overlay:
   false })`) so only the extension provides the UI.
 
@@ -348,12 +354,13 @@ transformed code (`_jsxFileName` / `RefreshRuntime.register`).
 6. Repeat with React 18:
    `pnpm --dir compat/react18/apps/vite exec vite --config vite.ext.config.ts`.
 7. Run `pnpm --dir playground/vite-react dev` (plugin enabled) → the extension
-   stays idle and the plugin's overlay handles Alt+click. Choose **Settings
-   source → Extension** in the popup: the extension takes over, the picker
-   includes **Open in IDE**, and selecting it opens the file in the editor
-   configured by the plugin (check the Vite terminal for the launch line)
-   without any Chrome protocol prompt. Switch back to **Vite plugin** → the
-   extension idles again and its keyboard/open/theme follow the plugin.
+   stays idle and the plugin's overlay handles Alt+click. Choose **Use the
+   extension settings** under **Options → Vite plugin**: the extension takes
+   over, the picker includes **Open in IDE**, and selecting it opens the file in
+   the editor configured by the plugin (check the Vite terminal for the launch
+   line) without any Chrome protocol prompt. Switch back to **Use the plugin
+   settings** → the extension idles again and its keyboard/open/theme follow the
+   plugin.
 8. Non-React page on localhost → no overlay, Alt+click is not suppressed.
 9. Production site (not localhost) → extension is not injected at all.
 

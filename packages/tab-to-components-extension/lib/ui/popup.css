@@ -265,37 +265,6 @@ select:disabled {
   opacity: 0.55;
 }
 
-/* -------------------------------------------------------------------- hint */
-
-.hint {
-  padding: 9px 11px;
-  border: 1px dashed var(--ttc-border);
-  border-radius: var(--ttc-radius);
-  background: var(--ttc-accent-soft);
-}
-
-.hint p {
-  margin: 0;
-  font-size: 12px;
-}
-
-.hint strong {
-  color: var(--ttc-accent);
-  font-weight: 600;
-}
-
-.hint__dismiss {
-  margin-top: 6px;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--ttc-muted);
-  font: inherit;
-  font-size: 12px;
-  text-decoration: underline;
-  cursor: pointer;
-}
-
 /* ------------------------------------------------------------------ footer */
 
 .popup__footer {

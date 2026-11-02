@@ -18,6 +18,7 @@ import {
 } from "./source/location";
 import type { ResolvedEntry } from "./source/types";
 import type { ClickAction } from "./types";
+import type { MenuIconName } from "./ui/icons";
 
 /** Detail shown when an entry has no source location to offer. */
 export const NO_LOCATION_DETAIL = "(no source location)";
@@ -37,6 +38,22 @@ export function sourceActionLabel(action: ClickAction): string {
       return "Copy full path";
     case "copy-location":
       return "Copy file:line:column";
+  }
+}
+
+/** Icon rendered before the primary label in the action picker. */
+export function sourceActionIcon(action: ClickAction): MenuIconName {
+  switch (action) {
+    case "open":
+      return "open";
+    case "copy-file":
+      return "copy-file";
+    case "copy-path":
+      return "copy-path";
+    case "copy-full-path":
+      return "copy-full-path";
+    case "copy-location":
+      return "copy-location";
   }
 }
 

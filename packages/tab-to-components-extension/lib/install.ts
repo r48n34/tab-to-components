@@ -7,7 +7,12 @@
  * happy-dom without chrome APIs.
  */
 
-import { sourceActionCopy, sourceActionDetail, sourceActionLabel } from "./actions";
+import {
+  sourceActionCopy,
+  sourceActionDetail,
+  sourceActionIcon,
+  sourceActionLabel,
+} from "./actions";
 import { OPEN_EDITOR_REQUIRES_PLUGIN } from "./plugin-editor";
 import type { AgentMessage, InspectorMessage, RawEntry } from "./protocol";
 import { formatLocation, formatNameLabel } from "./source/location";
@@ -185,6 +190,7 @@ export function createInspector(deps: InspectorDependencies): Inspector {
           ? "No source location"
           : sourceActionDetail(action, entry, root),
       action,
+      icon: sourceActionIcon(action),
       onActivate: () => activatedMenuItem(() => runAction(action, entry)),
     }));
   }
@@ -229,6 +235,7 @@ export function createInspector(deps: InspectorDependencies): Inspector {
     const items: MenuItem[] = resolvedChain.map((entry) => ({
       label: formatNameLabel(entry.name),
       detail: entry.location ? formatLocation(entry.location) : "",
+      icon: "component",
       onActivate: () => activatedMenuItem(() => runOpen(entry)),
     }));
     if (items.length === 0) return;

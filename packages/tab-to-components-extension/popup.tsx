@@ -20,7 +20,6 @@ import { useSettings } from "./lib/ui/use-settings"
 
 import "./lib/ui/popup.css"
 
-const HINT_DISMISSED_KEY = "ttc:popup-hint-dismissed"
 const VERSION_FALLBACK = "0.0.0"
 
 const MODIFIER_LABELS: Record<ModifierKey, string> = {
@@ -97,7 +96,6 @@ function Popup() {
   const [activeTab, setActiveTab] = useState<ActiveTab | null>(null)
   const [status, setStatus] = useState<TabStatus>({ kind: "loading" })
   const [saveError, setSaveError] = useState<string | null>(null)
-  const [showHint, setShowHint] = useState(false)
 
   const version = extensionVersion()
   const modifier = settings.keyboard[0] ?? "alt"
@@ -159,14 +157,6 @@ function Popup() {
     }
   }, [requestStatus])
 
-  useEffect(() => {
-    try {
-      setShowHint(window.localStorage.getItem(HINT_DISMISSED_KEY) !== "1")
-    } catch {
-      setShowHint(true)
-    }
-  }, [])
-
   const persist = useCallback(
     async (next: Settings) => {
       setSaveError(null)
@@ -195,15 +185,6 @@ function Popup() {
       setSaveError("Could not open the options page.")
     }
   }, [])
-
-  function dismissHint(): void {
-    setShowHint(false)
-    try {
-      window.localStorage.setItem(HINT_DISMISSED_KEY, "1")
-    } catch {
-      // Private-mode storage failures must never break the popup.
-    }
-  }
 
   const origin = activeTab?.origin ?? null
   const localTab = activeTab !== null && isLocalDevUrl(activeTab.url)
@@ -312,35 +293,9 @@ function Popup() {
                   : "Overlay disabled for this origin"}
               </span>
             </p>
-            {status.response.plugin || status.response.pluginOverlay ? (
-              <div className="field">
-                <label className="field__label" htmlFor="ttc-settings-source">
-                  Settings source
-                </label>
-                <select
-                  id="ttc-settings-source"
-                  value={settings.settingsSource}
-                  disabled={!loaded}
-                  onChange={(event) => {
-                    const value = event.target.value
-                    if (value !== "plugin" && value !== "extension") return
-                    void persist({ ...settings, settingsSource: value }).then(() => {
-                      // The content script learns about the write through its
-                      // storage watcher; give it a beat before asking for status.
-                      window.setTimeout(retryStatus, 200)
-                    })
-                  }}
-                >
-                  <option value="plugin">Vite plugin</option>
-                  <option value="extension">Extension</option>
-                </select>
-                <p className="field__detail">
-                  {settings.settingsSource === "plugin"
-                    ? "Keyboard, open mode, click actions and theme follow the plugin; the extension stays idle while the plugin's overlay is on the page."
-                    : "The extension takes over with its own settings and hides the plugin's overlay."}
-                </p>
-              </div>
-            ) : null}
+            {/* The "Settings source" choice is deliberately not editable here:
+                it lives on the full options page (Vite plugin → When both are
+                installed), which "Open settings" below opens. */}
             {!status.response.hasReact && (
               <p className="status__hint">
                 No React development build was detected on this page.
@@ -421,18 +376,6 @@ function Popup() {
           </p>
         </div>
       </section>
-
-      {showHint && (
-        <aside className="hint">
-          <p>
-            <strong>Tip:</strong> hold {MODIFIER_LABELS[modifier]} and click an element on
-            a localhost dev server to jump to its source.
-          </p>
-          <button type="button" className="hint__dismiss" onClick={dismissHint}>
-            Got it
-          </button>
-        </aside>
-      )}
 
       <footer className="popup__footer">
         <button type="button" className="btn btn--primary" onClick={openOptions}>

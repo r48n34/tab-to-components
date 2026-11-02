@@ -542,6 +542,18 @@ function Options() {
                 </span>
               </li>
             </ol>
+            <div className="callout">
+              <p className="callout__title">The whole gesture, at a glance</p>
+              <p className="callout__text">
+                Holding the modifier draws an outline plus a label with the component
+                name and its <code>file:line:column</code>. A left click opens the
+                action picker for that element — or the component chain directly when
+                the open mode is <strong>Menu</strong> — and a modifier + right click
+                always walks the chain from the element up to the page root. The
+                inspector only runs on loopback dev servers with a development React
+                build.
+              </p>
+            </div>
           </section>
 
           {/* ------------------------------------------------------- activation */}

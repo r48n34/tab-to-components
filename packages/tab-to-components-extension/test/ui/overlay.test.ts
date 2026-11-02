@@ -9,6 +9,7 @@ import {
   UI_Z_INDEX,
   type MenuItem,
 } from "../../lib/ui/overlay";
+import type { MenuIconName } from "../../lib/ui/icons";
 
 let overlay: Overlay | null = null;
 
@@ -41,10 +42,15 @@ function menuItem(
   detail: string,
   onActivate: () => void = vi.fn(),
   action?: string,
+  icon?: MenuIconName,
 ): MenuItem {
-  return action === undefined
-    ? { label, detail, onActivate }
-    : { label, detail, action, onActivate };
+  return {
+    label,
+    detail,
+    ...(action === undefined ? {} : { action }),
+    ...(icon === undefined ? {} : { icon }),
+    onActivate,
+  };
 }
 
 const HOVER = {
@@ -128,6 +134,7 @@ describe("Overlay host contract", () => {
     expect(css).toContain(".ttc-outline");
     expect(css).toContain(".ttc-label");
     expect(css).toContain(".ttc-menu-item[data-active]");
+    expect(css).toContain(".ttc-menu-icon");
     expect(css).toContain('.ttc-toast[data-kind="error"]');
     expect(css).toContain("pointer-events: none");
     expect(css).toContain("pointer-events: auto");
@@ -284,6 +291,37 @@ describe("menu", () => {
     expect(rows[0]?.hasAttribute("data-active")).toBe(true);
     expect(rows[1]?.textContent).toBe("Copy file name  home.tsx");
     expect(rows[1]?.hasAttribute("data-active")).toBe(false);
+  });
+
+  it("renders a decorative icon before the label without changing the row text", () => {
+    const instance = createOverlay();
+    instance.showMenu(
+      [
+        menuItem("Open in IDE", "app/routes/home.tsx:19:7", vi.fn(), "open", "open"),
+        menuItem("<Button />", "app/a.tsx:1:1", vi.fn(), undefined, "component"),
+      ],
+      10,
+      10,
+      { kind: "actions" },
+    );
+
+    const rows = menuRows();
+    const openIcon = rows[0]?.querySelector("svg.ttc-menu-icon");
+    expect(openIcon?.getAttribute("data-icon")).toBe("open");
+    expect(openIcon?.getAttribute("viewBox")).toBe("0 0 16 16");
+    expect(openIcon?.getAttribute("aria-hidden")).toBe("true");
+    expect(openIcon?.getAttribute("focusable")).toBe("false");
+    expect(openIcon?.textContent).toBe("");
+    // The icon is the first flex child, but the row's text contract is intact.
+    expect(rows[0]?.firstElementChild?.getAttribute("class")).toBe("ttc-menu-icon");
+    expect(rows[0]?.textContent).toBe("Open in IDE  app/routes/home.tsx:19:7");
+    expect(
+      rows[1]?.querySelector("svg.ttc-menu-icon")?.getAttribute("data-icon"),
+    ).toBe("component");
+
+    // Rows without an icon (the keyboard-navigation fixtures) stay icon-free.
+    instance.showMenu([menuItem("Copy", "a.tsx")], 10, 10);
+    expect(menuRows()[0]?.querySelector(".ttc-menu-icon")).toBeNull();
   });
 
   it("defaults to the chain kind without an aria-label", () => {

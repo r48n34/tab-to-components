@@ -286,6 +286,9 @@ describe("inspector actions", () => {
       "Copy file name",
       "Copy full path",
     ]);
+    expect(
+      rows.map((row) => row.querySelector(".ttc-menu-icon")?.getAttribute("data-icon")),
+    ).toEqual(["open", "copy-file", "copy-full-path"]);
     expect(menuRows("actions")[2]?.querySelector(".ttc-menu-source")?.textContent).toBe(
       "D:/proj/src/App.tsx",
     );
@@ -335,6 +338,10 @@ describe("inspector actions", () => {
       "<Button />",
       "<App />",
     ]);
+    // Chain rows use the plugin's stacked-box component icon.
+    expect(
+      rows.map((row) => row.querySelector(".ttc-menu-icon")?.getAttribute("data-icon")),
+    ).toEqual(["component", "component", "component"]);
     expect(rows[1]?.querySelector(".ttc-menu-source")?.textContent).toBe(
       "src/App.tsx:20:9",
     );
@@ -354,6 +361,11 @@ describe("inspector actions", () => {
       "Copy file name",
       "Copy full path",
     ]);
+    expect(
+      menuRows("actions").map((row) =>
+        row.querySelector(".ttc-menu-icon")?.getAttribute("data-icon"),
+      ),
+    ).toEqual(["copy-file", "copy-full-path"]);
     expect(harness.openEditor).not.toHaveBeenCalled();
   });
 
