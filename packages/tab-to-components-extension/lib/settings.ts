@@ -7,15 +7,19 @@
  * validated and falls back to a safe default.
  */
 
+import { normalizeCssColor } from "./color";
 import { normalizeOrigin } from "./origin";
 import {
   DEFAULT_CLICK_ACTIONS,
   isClickAction,
+  isCrosshairUnit,
   isModifierKey,
   MODIFIER_KEYS,
   OPEN_MODES,
   THEME_MODES,
   type ClickAction,
+  type CrosshairMode,
+  type CrosshairUnit,
   type ModifierKey,
   type OpenMode,
   type ThemeMode,
@@ -53,6 +57,16 @@ export interface Settings {
   clickActions: ClickAction[];
   menu: boolean;
   theme: ThemeMode;
+  /** Crosshair ruler mode; `false` keeps it off. */
+  crosshair: CrosshairMode;
+  /** Units shown together in the ruler and measurement labels. */
+  crosshairUnit: CrosshairUnit[];
+  /** Optional line color; empty uses the theme palette. */
+  crosshairLineColor?: string;
+  /** Optional pill text color; empty uses the theme palette. */
+  crosshairTextColor?: string;
+  /** Single letter/digit that drops a measurement point. */
+  crosshairPointKey: string;
   /** Settings source when both the extension and the Vite plugin are installed. */
   settingsSource: SettingsSource;
   /** Origin → absolute project root, used when a location has no absolute path. */
@@ -70,6 +84,9 @@ export const DEFAULT_SETTINGS: Settings = {
   clickActions: [...DEFAULT_CLICK_ACTIONS],
   menu: true,
   theme: "dark",
+  crosshair: false,
+  crosshairUnit: ["px"],
+  crosshairPointKey: "z",
   settingsSource: "plugin",
   projectRoots: {},
   debug: false,
@@ -124,6 +141,33 @@ export function normalizeTheme(value: unknown): ThemeMode {
     : DEFAULT_SETTINGS.theme;
 }
 
+const CROSSHAIR_POINT_KEY = /^[a-z0-9]$/i;
+
+/** `false`/`true` collapse to the ruler's off/both modes; unknown is off. */
+export function normalizeCrosshair(value: unknown): CrosshairMode {
+  if (value === true) return "both";
+  if (value === false) return false;
+  if (value === "both" || value === "x" || value === "y") return value;
+  return DEFAULT_SETTINGS.crosshair;
+}
+
+/** Accept one unit or an ordered list; keep known units, dedupe, fallback px. */
+export function normalizeCrosshairUnits(value: unknown): CrosshairUnit[] {
+  const source = Array.isArray(value) ? value : [value];
+  const units: CrosshairUnit[] = [];
+  for (const item of source) {
+    if (isCrosshairUnit(item) && !units.includes(item)) units.push(item);
+  }
+  return units.length > 0 ? units : [...DEFAULT_SETTINGS.crosshairUnit];
+}
+
+/** One letter or digit, case-insensitive; defaults to Z. */
+export function normalizeCrosshairPointKey(value: unknown): string {
+  if (typeof value !== "string") return DEFAULT_SETTINGS.crosshairPointKey;
+  const key = value.trim().toLowerCase();
+  return CROSSHAIR_POINT_KEY.test(key) ? key : DEFAULT_SETTINGS.crosshairPointKey;
+}
+
 function normalizeProjectRoots(value: unknown): Record<string, string> {
   const roots: Record<string, string> = {};
   if (!isRecord(value)) return roots;
@@ -166,6 +210,11 @@ export function normalizeSettings(input: unknown): Settings {
     clickActions: normalizeClickActions(source.clickActions),
     menu: typeof source.menu === "boolean" ? source.menu : DEFAULT_SETTINGS.menu,
     theme: normalizeTheme(source.theme),
+    crosshair: normalizeCrosshair(source.crosshair),
+    crosshairUnit: normalizeCrosshairUnits(source.crosshairUnit),
+    crosshairLineColor: normalizeCssColor(source.crosshairLineColor),
+    crosshairTextColor: normalizeCssColor(source.crosshairTextColor),
+    crosshairPointKey: normalizeCrosshairPointKey(source.crosshairPointKey),
     settingsSource: normalizeSettingsSource(
       source.settingsSource,
       source.showWhenVitePluginActive,

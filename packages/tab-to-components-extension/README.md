@@ -77,7 +77,10 @@ run `pnpm --filter tab-to-components-extension dev` and load
    appear on React elements.
 3. <kbd>Alt</kbd> + click opens the source action picker; <kbd>Alt</kbd> +
    right click lists the component chain.
-4. **Open in IDE** is shown when the page runs the tab-to-components Vite
+4. While <kbd>Alt</kbd> is held, the crosshair ruler (when enabled) follows the
+   pointer. Press <kbd>Z</kbd> to drop a measurement point; move and press it
+   again to add the next one. Releasing <kbd>Alt</kbd> clears every point.
+5. **Open in IDE** is shown when the page runs the tab-to-components Vite
    plugin. It asks the plugin's dev-server endpoint to open the location, so
    the editor launches on the machine that runs the dev server — no protocol
    prompt and no `vscode://` URL involved. Without the plugin the row is hidden;
@@ -101,9 +104,32 @@ live to open tabs.
 | `clickActions` | `["open","copy-file","copy-full-path"]` | Rows in the action picker, in order. A single row runs immediately. `open` is hidden when the page does not run the Vite plugin. |
 | `menu` | `true` | Enable the Alt+right-click chain picker. |
 | `theme` | `"dark"` | Overlay theme (`dark` or `light`). |
+| `crosshair` | `false` | Show the crosshair ruler while the `keyboard` modifier is held: `false`, `true`, `"both"`, `"x"` or `"y"`. |
+| `crosshairUnit` | `["px"]` | Readout unit(s) for the ruler and measurement labels: `"px"`, `"cm"`, `"mm"`, `"in"`, `"rem"`, or an ordered list such as `["px", "cm"]`. |
+| `crosshairLineColor` | theme | Optional CSS color for the ruler lines and coordinate/measurement pill backgrounds. |
+| `crosshairTextColor` | theme | Optional CSS color for the ruler and measurement pill text. |
+| `crosshairPointKey` | `"z"` | Key that drops a measurement point while the ruler is visible: one letter or digit, case-insensitive. |
 | `settingsSource` | `"plugin"` | Which settings win when both are installed: `plugin` follows the plugin's overlay options and stays idle while its overlay is up; `extension` takes over with the extension's settings and hides the plugin's overlay. |
 | `projectRoots` | `{}` | Origin → absolute project root, used by **Copy full path** when a location has no absolute path (e.g. Vite-plugin markers). |
 | `debug` | `false` | Verbose console logging. |
+
+### Crosshair
+
+The crosshair is off by default; enable it under **Options → Appearance**. It
+appears only while the configured `keyboard` modifier is held (default
+<kbd>Alt</kbd>) and disappears on release, so it does not cover the page while
+you are not inspecting. Press the point key (default <kbd>Z</kbd>) to drop a
+measurement point at the pointer; each new point is joined to the previous point
+only. Segment labels use every configured `crosshairUnit` (for example
+`300px · 7.94cm`). Physical units use the CSS reference pixel (`1in = 96px`),
+and `"rem"` follows the document root font size.
+
+`crosshairLineColor` paints the guide lines and the pill backgrounds;
+`crosshairTextColor` sets the pill text. When omitted, the overlay theme palette
+is used. Releasing the modifier, scrolling, or blurring the window removes all
+points and labels. The point key also matches the physical key code, so macOS
+<kbd>Option</kbd>+<kbd>Z</kbd> still works when Option changes the produced
+character.
 
 ### Copy actions
 
@@ -209,8 +235,8 @@ world so it can use `chrome.storage`, the clipboard and `chrome.runtime`.
 The two can be used together. `settingsSource` decides which configuration wins:
 
 - **`plugin`** (default): the extension follows the plugin's `keyboard`, `open`,
-  `clickActions`, `menu` and `theme`, and stays idle while the plugin's own
-  overlay is on the page. With the plugin installed as `overlay: false`
+  `clickActions`, `menu`, `theme` and crosshair options, and stays idle while
+  the plugin's own overlay is on the page. With the plugin installed as `overlay: false`
   (markers only), the extension renders its overlay using those plugin options.
 - **`extension`**: the extension takes over — it hides the plugin's overlay and
   uses its own settings. **Open in IDE** still goes through the plugin either
@@ -321,8 +347,8 @@ worker threads).
   `test/fixtures/vite-react19-no-map-file.ts`), layered resolution.
 - `test/agent/*` — fiber discovery/naming, chain walk, modifier handling.
 - `test/install.test.ts` — happy-dom integration of the overlay controller
-  (hover label, action/chain menus, copy/open flows, hiding Open in IDE without
-  a plugin, protocol messages).
+  (hover label, action/chain menus, copy/open flows, crosshair pointers and
+  measurement points, hiding Open in IDE without a plugin, protocol messages).
 - `test/ui/overlay.test.ts` — overlay DOM/CSS/keyboard contract.
 - `test/plugin-editor.test.ts`, `test/settings.test.ts`,
   `test/protocol.test.ts`, `test/actions.test.ts`, `test/chain.test.ts`,

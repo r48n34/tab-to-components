@@ -9,7 +9,7 @@
 
 import { MAX_EDITOR_TARGET } from "./plugin-editor";
 import { parsePluginConfig, type PluginConfig } from "./plugin-config";
-import type { ModifierKey } from "./types";
+import type { CrosshairMode, ModifierKey } from "./types";
 
 export const PROTOCOL_VERSION = 1;
 export const MAX_CHAIN_ENTRIES = 64;
@@ -56,6 +56,10 @@ export interface AgentConfig {
   enabled: boolean;
   keyboard: ModifierKey[];
   menu: boolean;
+  /** Crosshair ruler mode; `false` means pointer events are not tracked. */
+  crosshair: CrosshairMode;
+  /** Single letter/digit that drops a measurement point. */
+  crosshairPointKey: string;
 }
 
 /** inspector → agent */
@@ -83,6 +87,22 @@ export type AgentMessage =
       requestId: number;
       chain: RawEntry[];
       rect: RawRect;
+      x: number;
+      y: number;
+    }
+  | {
+      __ttc: 1;
+      source: "ttc-agent";
+      type: "pointer";
+      requestId: number;
+      x: number;
+      y: number;
+    }
+  | {
+      __ttc: 1;
+      source: "ttc-agent";
+      type: "point";
+      requestId: number;
       x: number;
       y: number;
     }
@@ -259,6 +279,18 @@ export function parseInspectorMessage(value: unknown): InspectorMessage | null {
           if (!keyboard.includes(key)) keyboard.push(key);
         }
       }
+      const crosshair: CrosshairMode =
+        config.crosshair === "both" ||
+        config.crosshair === "x" ||
+        config.crosshair === "y"
+          ? config.crosshair
+          : false;
+      const rawPointKey = config.crosshairPointKey;
+      const crosshairPointKey =
+        typeof rawPointKey === "string" &&
+        /^[a-z0-9]$/i.test(rawPointKey.trim())
+          ? rawPointKey.trim().toLowerCase()
+          : "z";
       return {
         __ttc: PROTOCOL_VERSION,
         source: "ttc-inspector",
@@ -267,6 +299,8 @@ export function parseInspectorMessage(value: unknown): InspectorMessage | null {
           enabled: config.enabled,
           menu: config.menu,
           keyboard: keyboard.length > 0 ? keyboard : ["alt"],
+          crosshair,
+          crosshairPointKey,
         },
       };
     }
@@ -313,6 +347,18 @@ export function parseAgentMessage(value: unknown): AgentMessage | null {
   const requestId = value.requestId;
 
   switch (value.type) {
+    case "pointer":
+    case "point": {
+      if (!isFiniteNumber(value.x) || !isFiniteNumber(value.y)) return null;
+      return {
+        __ttc: PROTOCOL_VERSION,
+        source: "ttc-agent",
+        type: value.type,
+        requestId,
+        x: value.x,
+        y: value.y,
+      };
+    }
     case "hover": {
       const chain = sanitizeRawChain(value.chain);
       if (chain === null) return null;

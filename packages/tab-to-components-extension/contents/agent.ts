@@ -98,6 +98,9 @@ function installAgent(): (() => void) | null {
   let pendingTarget: Element | null = null;
   let pendingX = 0;
   let pendingY = 0;
+  let pointerKnown = false;
+  let pointerX = 0;
+  let pointerY = 0;
   let lastHoverHadContent = false;
 
   const activeListeners: RegisteredListener[] = [];
@@ -273,6 +276,42 @@ function installAgent(): (() => void) | null {
     }
   }
 
+  function postPointer(): void {
+    if (config === null || config.crosshair === false || !pointerKnown) return;
+    post({
+      __ttc: PROTOCOL_VERSION,
+      source: "ttc-agent",
+      type: "pointer",
+      requestId: nextRequestId(),
+      x: pointerX,
+      y: pointerY,
+    });
+  }
+
+  function postPoint(): void {
+    if (config === null || config.crosshair === false || !pointerKnown) return;
+    post({
+      __ttc: PROTOCOL_VERSION,
+      source: "ttc-agent",
+      type: "point",
+      requestId: nextRequestId(),
+      x: pointerX,
+      y: pointerY,
+    });
+  }
+
+  /**
+   * True when a keyboard event matches the configured measurement-point key.
+   * `event.key` is the character the browser produced, which on macOS becomes
+   * an Option symbol for many letters (`Option+Z` is `Ω`); fall back to the
+   * physical code so the default Z shortcut still works there.
+   */
+  function isPointKey(event: KeyboardEvent, key: string): boolean {
+    if (event.key.toLowerCase() === key) return true;
+    if (/^[a-z]$/.test(key)) return event.code === `Key${key.toUpperCase()}`;
+    return event.code === `Digit${key}` || event.code === `Numpad${key}`;
+  }
+
   function renderHover(): void {
     if (!armed || menuOpen || pendingTarget === null) {
       postHoverNone();
@@ -329,6 +368,15 @@ function installAgent(): (() => void) | null {
     }
     if (isModifierHeld(event, config.keyboard)) {
       armed = true;
+      postPointer();
+      if (
+        config.crosshair !== false &&
+        pointerKnown &&
+        isPointKey(event, config.crosshairPointKey)
+      ) {
+        consume(event);
+        if (!event.repeat) postPoint();
+      }
     }
   }
 
@@ -348,11 +396,17 @@ function installAgent(): (() => void) | null {
   function onMouseMove(rawEvent: Event): void {
     if (config === null || !config.enabled || menuOpen) return;
     const event = rawEvent as MouseEvent;
+    if (config.crosshair !== false) {
+      pointerKnown = true;
+      pointerX = event.clientX;
+      pointerY = event.clientY;
+    }
     if (!isModifierHeld(event, config.keyboard)) {
       if (armed || lastHoverHadContent) disarm("keyup");
       return;
     }
     armed = true;
+    postPointer();
     const target = elementFromTarget(event.target);
     if (target === null || isOverlayTarget(target)) {
       pendingTarget = null;

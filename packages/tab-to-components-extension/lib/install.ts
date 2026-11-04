@@ -79,7 +79,10 @@ export function createInspector(deps: InspectorDependencies): Inspector {
 
   let hoverToken = 0;
 
-  const overlay = new Overlay(doc, settings.theme);
+  const overlay = new Overlay(doc, settings.theme, settings.crosshair, settings.crosshairUnit, {
+    line: settings.crosshairLineColor,
+    text: settings.crosshairTextColor,
+  });
   function notifyMenuState(open: boolean): void {
     deps.postToAgent({
       __ttc: 1,
@@ -315,6 +318,10 @@ export function createInspector(deps: InspectorDependencies): Inspector {
     settings = next;
     root = projectRootFor(settings, deps.origin);
     overlay.hostElement.setAttribute(THEME_ATTRIBUTE, settings.theme);
+    overlay.configureCrosshair(settings.crosshair, settings.crosshairUnit, {
+      line: settings.crosshairLineColor,
+      text: settings.crosshairTextColor,
+    });
     if (overlay.isMenuOpen) closeMenu();
   }
 
@@ -327,6 +334,13 @@ export function createInspector(deps: InspectorDependencies): Inspector {
       case "hover-none":
         hideHover();
         return;
+      case "pointer":
+        overlay.setCrosshair(message.x, message.y);
+        return;
+      case "point":
+        overlay.setCrosshair(message.x, message.y);
+        overlay.addCrosshairPoint(message.x, message.y);
+        return;
       case "activate":
         void handleActivate(message);
         return;
@@ -338,6 +352,8 @@ export function createInspector(deps: InspectorDependencies): Inspector {
         return;
       case "disarm":
         hideHover();
+        overlay.clearCrosshairPoints();
+        overlay.hideCrosshair();
         if (message.reason === "scroll" || message.reason === "blur" || message.reason === "disable") {
           closeMenu();
         }

@@ -14,6 +14,12 @@ export type OpenMode = "component" | "element" | "menu";
 /** Color theme of the overlay UI. */
 export type ThemeMode = "dark" | "light";
 
+/** Which crosshair ruler axes are drawn. `false` disables the ruler. */
+export type CrosshairMode = "both" | "x" | "y" | false;
+
+/** Units the crosshair ruler and measurement labels can display. */
+export type CrosshairUnit = "px" | "cm" | "mm" | "in" | "rem";
+
 /**
  * One row of the modifier + left-click action picker.
  *
@@ -35,6 +41,20 @@ export const MODIFIER_KEYS: readonly ModifierKey[] = [
   "ctrl",
   "meta",
   "shift",
+];
+
+export const CROSSHAIR_MODES: readonly Exclude<CrosshairMode, false>[] = [
+  "both",
+  "x",
+  "y",
+];
+
+export const CROSSHAIR_UNITS: readonly CrosshairUnit[] = [
+  "px",
+  "cm",
+  "mm",
+  "in",
+  "rem",
 ];
 
 export const OPEN_MODES: readonly OpenMode[] = ["component", "element", "menu"];
@@ -60,6 +80,13 @@ export function isModifierKey(value: unknown): value is ModifierKey {
   return (
     typeof value === "string" &&
     (MODIFIER_KEYS as readonly string[]).includes(value)
+  );
+}
+
+export function isCrosshairUnit(value: unknown): value is CrosshairUnit {
+  return (
+    typeof value === "string" &&
+    (CROSSHAIR_UNITS as readonly string[]).includes(value)
   );
 }
 

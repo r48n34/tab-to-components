@@ -132,6 +132,11 @@ async function installInspector(): Promise<(() => void) | null> {
       value.clickActions,
       value.menu,
       value.theme,
+      value.crosshair,
+      value.crosshairUnit,
+      value.crosshairLineColor,
+      value.crosshairTextColor,
+      value.crosshairPointKey,
     ]);
   }
 
@@ -162,12 +167,20 @@ async function installInspector(): Promise<(() => void) | null> {
     return settings.settingsSource === "extension" || !pluginOverlayPresent();
   }
 
-  function agentConfig(): { enabled: boolean; keyboard: Settings["keyboard"]; menu: boolean } {
+  function agentConfig(): {
+    enabled: boolean;
+    keyboard: Settings["keyboard"];
+    menu: boolean;
+    crosshair: Settings["crosshair"];
+    crosshairPointKey: string;
+  } {
     const active = effectiveSettings();
     return {
       enabled: effectiveEnabled(),
       keyboard: active.keyboard,
       menu: active.menu,
+      crosshair: active.crosshair,
+      crosshairPointKey: active.crosshairPointKey,
     };
   }
 

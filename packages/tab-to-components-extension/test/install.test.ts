@@ -151,6 +151,20 @@ function toastVisible(): boolean {
   return toast !== null && toast.style.display !== "none";
 }
 
+function crosshairNodes(): {
+  box: HTMLElement;
+  points: HTMLElement;
+  tagX: HTMLElement;
+  tagY: HTMLElement;
+} {
+  return {
+    box: shadow().querySelector<HTMLElement>(".ttc-crosshair")!,
+    points: shadow().querySelector<HTMLElement>(".ttc-crosshair-points")!,
+    tagX: shadow().querySelector<HTMLElement>(".ttc-crosshair-tag")!,
+    tagY: shadow().querySelector<HTMLElement>(".ttc-crosshair-tag-y")!,
+  };
+}
+
 function hover(chain: RawEntry[]): AgentMessage {
   return {
     __ttc: 1,
@@ -468,5 +482,83 @@ describe("inspector protocol emission", () => {
       (call) => (call[0] as InspectorMessage).type,
     );
     expect(emitted).not.toContain("menu-state");
+  });
+});
+
+describe("inspector crosshair", () => {
+  it("draws pointers and points, then clears them on disarm", () => {
+    harness = createHarness(
+      baseSettings({ crosshair: "both", crosshairUnit: ["px", "cm"] }),
+    );
+    harness.inspector.handleAgentMessage({
+      __ttc: 1,
+      source: "ttc-agent",
+      type: "pointer",
+      requestId: 1,
+      x: 300,
+      y: 200,
+    });
+    const nodes = crosshairNodes();
+    expect(nodes.box.style.display).not.toBe("none");
+    expect(nodes.tagX.textContent).toBe("300px · 7.94cm");
+    expect(nodes.tagY.textContent).toBe("200px · 5.29cm");
+
+    harness.inspector.handleAgentMessage({
+      __ttc: 1,
+      source: "ttc-agent",
+      type: "point",
+      requestId: 2,
+      x: 400,
+      y: 300,
+    });
+    expect(nodes.points.querySelectorAll(".ttc-crosshair-point")).toHaveLength(1);
+    expect(nodes.points.querySelectorAll(".ttc-crosshair-segment")).toHaveLength(0);
+
+    harness.inspector.handleAgentMessage({
+      __ttc: 1,
+      source: "ttc-agent",
+      type: "point",
+      requestId: 3,
+      x: 500,
+      y: 300,
+    });
+    expect(nodes.points.querySelectorAll(".ttc-crosshair-point")).toHaveLength(2);
+    expect(nodes.points.querySelectorAll(".ttc-crosshair-segment")).toHaveLength(1);
+    expect(nodes.points.querySelector(".ttc-crosshair-distance")?.textContent).toBe(
+      "100px · 2.65cm",
+    );
+
+    harness.inspector.handleAgentMessage({
+      __ttc: 1,
+      source: "ttc-agent",
+      type: "disarm",
+      requestId: 4,
+      reason: "keyup",
+    });
+    expect(nodes.points.querySelectorAll(".ttc-crosshair-point")).toHaveLength(0);
+    expect(nodes.points.querySelectorAll(".ttc-crosshair-segment")).toHaveLength(0);
+    expect(nodes.box.style.display).toBe("none");
+  });
+
+  it("applies custom line and text colors and updates live settings", () => {
+    harness = createHarness(
+      baseSettings({
+        crosshair: "both",
+        crosshairLineColor: "#ff3355",
+        crosshairTextColor: "tomato",
+      }),
+    );
+    const host = overlayHost();
+    expect(host.style.getPropertyValue("--ttc-crosshair-line")).toBe("#ff3355");
+    expect(host.style.getPropertyValue("--ttc-crosshair-tag-bg")).toBe("#ff3355");
+    expect(host.style.getPropertyValue("--ttc-crosshair-tag-text")).toBe("tomato");
+    expect(host.getAttribute("data-ttc-crosshair")).toBe("both");
+
+    harness.inspector.setSettings(
+      baseSettings({ crosshair: false, crosshairUnit: ["cm"] }),
+    );
+    expect(host.hasAttribute("data-ttc-crosshair")).toBe(false);
+    expect(host.style.getPropertyValue("--ttc-crosshair-line")).toBe("");
+    expect(host.style.getPropertyValue("--ttc-crosshair-tag-text")).toBe("");
   });
 });

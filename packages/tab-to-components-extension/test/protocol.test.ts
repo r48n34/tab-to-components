@@ -24,7 +24,13 @@ describe("parseInspectorMessage", () => {
       __ttc: PROTOCOL_VERSION,
       source: "ttc-inspector",
       type: "config",
-      config: { enabled: true, menu: false, keyboard: ["alt"] },
+      config: {
+        enabled: true,
+        menu: false,
+        keyboard: ["alt"],
+        crosshair: false,
+        crosshairPointKey: "z",
+      },
     });
     if (message === null || message.type !== "config") {
       throw new Error("expected a config message");
@@ -43,6 +49,44 @@ describe("parseInspectorMessage", () => {
       throw new Error("expected a config message");
     }
     expect(message.config.keyboard).toEqual(["alt"]);
+  });
+
+  it("normalizes crosshair mode and point key", () => {
+    const valid = parseInspectorMessage({
+      __ttc: PROTOCOL_VERSION,
+      source: "ttc-inspector",
+      type: "config",
+      config: {
+        enabled: true,
+        menu: false,
+        keyboard: ["alt"],
+        crosshair: "x",
+        crosshairPointKey: " P ",
+      },
+    });
+    if (valid === null || valid.type !== "config") {
+      throw new Error("expected a config message");
+    }
+    expect(valid.config.crosshair).toBe("x");
+    expect(valid.config.crosshairPointKey).toBe("p");
+
+    const invalid = parseInspectorMessage({
+      __ttc: PROTOCOL_VERSION,
+      source: "ttc-inspector",
+      type: "config",
+      config: {
+        enabled: true,
+        menu: false,
+        keyboard: ["alt"],
+        crosshair: "nope",
+        crosshairPointKey: "!",
+      },
+    });
+    if (invalid === null || invalid.type !== "config") {
+      throw new Error("expected a config message");
+    }
+    expect(invalid.config.crosshair).toBe(false);
+    expect(invalid.config.crosshairPointKey).toBe("z");
   });
 
   it("accepts probe and menu-state messages", () => {
@@ -124,6 +168,31 @@ describe("parseAgentMessage", () => {
     y: 20,
   };
 
+  it("accepts pointer and point messages with finite coordinates", () => {
+    for (const type of ["pointer", "point"] as const) {
+      expect(
+        parseAgentMessage({
+          __ttc: PROTOCOL_VERSION,
+          source: "ttc-agent",
+          type,
+          requestId: 7,
+          x: 12.5,
+          y: 40,
+        }),
+      ).not.toBeNull();
+    }
+    expect(
+      parseAgentMessage({
+        __ttc: PROTOCOL_VERSION,
+        source: "ttc-agent",
+        type: "point",
+        requestId: 7,
+        x: Number.NaN,
+        y: 40,
+      }),
+    ).toBeNull();
+  });
+
   it("accepts hover, activate, chain-menu, dismiss, disarm, status, ready and hover-none", () => {
     expect(parseAgentMessage(hover)).not.toBeNull();
     expect(
@@ -191,6 +260,9 @@ describe("parseAgentMessage", () => {
     clickActions: ["open", "copy-file"],
     menu: true,
     theme: "dark",
+    crosshair: false,
+    crosshairUnit: ["px"],
+    crosshairPointKey: "z",
   };
 
   it("carries the plugin config the page injected", () => {

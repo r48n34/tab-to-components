@@ -16,6 +16,11 @@ const RAW = {
   clickActions: ["open", "copy-file", "open", "nope"],
   menu: false,
   theme: "light",
+  crosshair: "x",
+  crosshairUnit: ["px", "cm", "px"],
+  crosshairLineColor: " #ff3355 ",
+  crosshairTextColor: "tomato",
+  crosshairPointKey: " P ",
 };
 
 describe("parsePluginConfig", () => {
@@ -29,6 +34,11 @@ describe("parsePluginConfig", () => {
       clickActions: ["open", "copy-file"],
       menu: false,
       theme: "light",
+      crosshair: "x",
+      crosshairUnit: ["px", "cm"],
+      crosshairLineColor: "#ff3355",
+      crosshairTextColor: "tomato",
+      crosshairPointKey: "p",
     });
   });
 
@@ -44,6 +54,9 @@ describe("parsePluginConfig", () => {
     expect(parsed?.clickActions).toEqual(DEFAULT_SETTINGS.clickActions);
     expect(parsed?.menu).toBe(DEFAULT_SETTINGS.menu);
     expect(parsed?.theme).toBe(DEFAULT_SETTINGS.theme);
+    expect(parsed?.crosshair).toBe(DEFAULT_SETTINGS.crosshair);
+    expect(parsed?.crosshairUnit).toEqual(DEFAULT_SETTINGS.crosshairUnit);
+    expect(parsed?.crosshairPointKey).toBe(DEFAULT_SETTINGS.crosshairPointKey);
   });
 
   it("drops plugin-only click actions the extension cannot perform", () => {
@@ -91,6 +104,11 @@ describe("applyPluginSettings", () => {
     expect(merged.clickActions).toEqual(["open", "copy-file"]);
     expect(merged.menu).toBe(false);
     expect(merged.theme).toBe("light");
+    expect(merged.crosshair).toBe("x");
+    expect(merged.crosshairUnit).toEqual(["px", "cm"]);
+    expect(merged.crosshairLineColor).toBe("#ff3355");
+    expect(merged.crosshairTextColor).toBe("tomato");
+    expect(merged.crosshairPointKey).toBe("p");
     // Local state stays local.
     expect(merged.enabled).toBe(false);
     expect(merged.disabledOrigins).toEqual(["http://localhost:5173"]);
@@ -99,5 +117,24 @@ describe("applyPluginSettings", () => {
     expect(merged.settingsSource).toBe("plugin");
     // No mutation of the stored settings.
     expect(settings.keyboard).toEqual(DEFAULT_SETTINGS.keyboard);
+  });
+
+  it("clears extension-local colors when the plugin does not set them", () => {
+    const parsed = parsePluginConfig({
+      base: "/",
+      editorEndpoint: "__ttc/open-in-editor",
+      root: "D:/projects/app",
+    });
+    if (parsed === null) throw new Error("expected plugin config");
+    const merged = applyPluginSettings(
+      {
+        ...DEFAULT_SETTINGS,
+        crosshairLineColor: "#123456",
+        crosshairTextColor: "#abcdef",
+      },
+      parsed,
+    );
+    expect(merged.crosshairLineColor).toBeUndefined();
+    expect(merged.crosshairTextColor).toBeUndefined();
   });
 });

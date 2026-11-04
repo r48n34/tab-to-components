@@ -9,15 +9,26 @@
  */
 
 import { parsePluginInfo, type PluginInfo } from "./plugin-editor";
+import { normalizeCssColor } from "./color";
 import {
   DEFAULT_SETTINGS,
   normalizeClickActions,
+  normalizeCrosshair,
+  normalizeCrosshairPointKey,
+  normalizeCrosshairUnits,
   normalizeKeyboard,
   normalizeOpen,
   normalizeTheme,
   type Settings,
 } from "./settings";
-import type { ClickAction, ModifierKey, OpenMode, ThemeMode } from "./types";
+import type {
+  ClickAction,
+  CrosshairMode,
+  CrosshairUnit,
+  ModifierKey,
+  OpenMode,
+  ThemeMode,
+} from "./types";
 
 export interface PluginConfig extends PluginInfo {
   keyboard: ModifierKey[];
@@ -25,6 +36,11 @@ export interface PluginConfig extends PluginInfo {
   clickActions: ClickAction[];
   menu: boolean;
   theme: ThemeMode;
+  crosshair: CrosshairMode;
+  crosshairUnit: CrosshairUnit[];
+  crosshairLineColor?: string;
+  crosshairTextColor?: string;
+  crosshairPointKey: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -42,6 +58,15 @@ export function parsePluginConfig(value: unknown): PluginConfig | null {
     clickActions: normalizeClickActions(value.clickActions),
     menu: typeof value.menu === "boolean" ? value.menu : DEFAULT_SETTINGS.menu,
     theme: normalizeTheme(value.theme),
+    crosshair: normalizeCrosshair(value.crosshair),
+    crosshairUnit: normalizeCrosshairUnits(value.crosshairUnit),
+    ...(normalizeCssColor(value.crosshairLineColor) === undefined
+      ? {}
+      : { crosshairLineColor: normalizeCssColor(value.crosshairLineColor) }),
+    ...(normalizeCssColor(value.crosshairTextColor) === undefined
+      ? {}
+      : { crosshairTextColor: normalizeCssColor(value.crosshairTextColor) }),
+    crosshairPointKey: normalizeCrosshairPointKey(value.crosshairPointKey),
   };
 }
 
@@ -65,5 +90,10 @@ export function applyPluginSettings(settings: Settings, plugin: PluginConfig): S
     clickActions: [...plugin.clickActions],
     menu: plugin.menu,
     theme: plugin.theme,
+    crosshair: plugin.crosshair,
+    crosshairUnit: [...plugin.crosshairUnit],
+    crosshairLineColor: plugin.crosshairLineColor,
+    crosshairTextColor: plugin.crosshairTextColor,
+    crosshairPointKey: plugin.crosshairPointKey,
   };
 }

@@ -457,6 +457,10 @@ app's Vite config**:
   published to the Chrome Web Store.
 - Coexists with this plugin: with `overlay: false` the extension reuses the
   plugin's exact markers and provides its own UI.
+- The extension overlay includes the same crosshair ruler: configurable
+  `x`/`y`/`both` mode, multi-unit readouts, custom line/text colors, and
+  <kbd>Z</kbd> measurement points that are visible only while the trigger
+  modifier is held.
 
 ```bash
 pnpm gate:extension   # typecheck + tests + production build + manifest check

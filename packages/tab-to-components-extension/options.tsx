@@ -19,6 +19,7 @@ import {
 } from "react"
 
 import { normalizeOrigin } from "./lib/origin"
+import { normalizeCssColor } from "./lib/color"
 import { createDefaultSettings, type Settings } from "./lib/settings"
 import {
   isSafeAbsolutePath,
@@ -27,11 +28,15 @@ import {
 } from "./lib/source/location"
 import {
   CLICK_ACTIONS,
+  CROSSHAIR_MODES,
+  CROSSHAIR_UNITS,
   DEFAULT_CLICK_ACTIONS,
   MODIFIER_KEYS,
   OPEN_MODES,
   THEME_MODES,
   type ClickAction,
+  type CrosshairMode,
+  type CrosshairUnit,
   type ModifierKey,
   type OpenMode,
   type ThemeMode,
@@ -81,6 +86,24 @@ const THEME_INFO: Record<ThemeMode, { label: string; detail: string }> = {
     label: "Light",
     detail: "Blue-on-white overlay for light apps and screenshots.",
   },
+}
+
+const CROSSHAIR_MODE_INFO: Record<Exclude<CrosshairMode, false> | "off", {
+  label: string
+  detail: string
+}> = {
+  both: { label: "Both axes", detail: "Vertical and horizontal rulers." },
+  x: { label: "Vertical only", detail: "Track the x coordinate." },
+  y: { label: "Horizontal only", detail: "Track the y coordinate." },
+  off: { label: "Off", detail: "No ruler while the modifier is held." },
+}
+
+const CROSSHAIR_UNIT_INFO: Record<CrosshairUnit, { label: string; detail: string }> = {
+  px: { label: "px", detail: "CSS pixels" },
+  cm: { label: "cm", detail: "Centimetres" },
+  mm: { label: "mm", detail: "Millimetres" },
+  in: { label: "in", detail: "Inches" },
+  rem: { label: "rem", detail: "Root font size" },
 }
 
 const ACTION_INFO: Record<ClickAction, { label: string; detail: string }> = {
@@ -381,6 +404,55 @@ function Options() {
   function changeTheme(value: string): void {
     if (!(THEME_MODES as readonly string[]).includes(value)) return
     void persist({ ...settings, theme: value as ThemeMode })
+  }
+
+  function changeCrosshairMode(value: string): void {
+    if (value === "off") {
+      void persist({ ...settings, crosshair: false })
+      return
+    }
+    if (!(CROSSHAIR_MODES as readonly string[]).includes(value)) return
+    void persist({ ...settings, crosshair: value as CrosshairMode })
+  }
+
+  function toggleCrosshairUnit(unit: CrosshairUnit, checked: boolean): void {
+    const next = checked
+      ? [...new Set([...settings.crosshairUnit, unit])]
+      : settings.crosshairUnit.filter((item) => item !== unit)
+    if (next.length === 0) {
+      showNotice("At least one crosshair unit is required, so px was restored.")
+      void persist({ ...settings, crosshairUnit: ["px"] })
+      return
+    }
+    void persist({ ...settings, crosshairUnit: next })
+  }
+
+  function commitCrosshairColor(
+    field: "crosshairLineColor" | "crosshairTextColor",
+    value: string,
+  ): string | null {
+    const trimmed = value.trim()
+    if (trimmed === "") {
+      void persist({ ...settings, [field]: undefined })
+      return ""
+    }
+    const normalized = normalizeCssColor(trimmed)
+    if (normalized === undefined) {
+      showNotice("That CSS color is not recognized, so the theme color was kept.")
+      return null
+    }
+    void persist({ ...settings, [field]: normalized })
+    return normalized
+  }
+
+  function commitCrosshairPointKey(value: string): boolean {
+    const key = value.trim().toLowerCase()
+    if (!/^[a-z0-9]$/.test(key)) {
+      showNotice("The point key must be one letter or digit.")
+      return false
+    }
+    void persist({ ...settings, crosshairPointKey: key })
+    return true
   }
 
   function changeSettingsSource(value: string): void {
@@ -783,9 +855,161 @@ function Options() {
                 ))}
               </div>
             </fieldset>
-          </section>
 
-          {/* ------------------------------------------------------------ plugin */}
+            <fieldset className="group">
+              <legend className="group__title">Crosshair ruler</legend>
+              <p className="group__hint">
+                Hold the trigger modifier to show the ruler at the cursor. Release it to
+                hide the ruler and clear every measurement point.
+              </p>
+              <div className="option-grid option-grid--two">
+                {(["both", "x", "y", "off"] as const).map((mode) => (
+                  <label className="option-card" key={mode}>
+                    <input
+                      type="radio"
+                      className="option-card__input"
+                      name="crosshair-mode"
+                      value={mode}
+                      checked={
+                        mode === "off"
+                          ? settings.crosshair === false
+                          : settings.crosshair === mode
+                      }
+                      disabled={!loaded}
+                      onChange={(event) => {
+                        changeCrosshairMode(event.target.value)
+                      }}
+                    />
+                    <span className="option-card__dot" aria-hidden="true" />
+                    <span className="option-card__body">
+                      <span className="option-card__title">
+                        {CROSSHAIR_MODE_INFO[mode].label}
+                      </span>
+                      <span className="option-card__detail">
+                        {CROSSHAIR_MODE_INFO[mode].detail}
+                      </span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+
+            <fieldset className="group">
+              <legend className="group__title">Readout units</legend>
+              <p className="group__hint">
+                Pick one or more; every unit is shown together in the coordinate pill.
+              </p>
+              <div className="chip-grid">
+                {CROSSHAIR_UNITS.map((unit) => (
+                  <label className="chip" key={unit}>
+                    <input
+                      type="checkbox"
+                      className="chip__input"
+                      checked={settings.crosshairUnit.includes(unit)}
+                      disabled={!loaded}
+                      onChange={(event) => {
+                        toggleCrosshairUnit(unit, event.target.checked)
+                      }}
+                    />
+                    <span className="chip__check" aria-hidden="true" />
+                    <span className="chip__body">
+                      <span className="chip__label">{CROSSHAIR_UNIT_INFO[unit].label}</span>
+                      <span className="chip__detail">
+                        {CROSSHAIR_UNIT_INFO[unit].detail}
+                      </span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+
+            <fieldset className="group">
+              <legend className="group__title">Colors</legend>
+              <p className="group__hint">
+                Leave a field empty to use the theme. The line color also fills the
+                coordinate pills.
+              </p>
+              <div className="field">
+                <label className="field__label" htmlFor="crosshair-line-color">
+                  Line and badge color
+                </label>
+                <input
+                  key={`line-${settings.crosshairLineColor ?? "theme"}`}
+                  id="crosshair-line-color"
+                  type="text"
+                  defaultValue={settings.crosshairLineColor ?? ""}
+                  disabled={!loaded}
+                  spellCheck={false}
+                  maxLength={64}
+                  placeholder="Theme default, e.g. #ff3355"
+                  onBlur={(event) => {
+                    const next = commitCrosshairColor(
+                      "crosshairLineColor",
+                      event.target.value,
+                    )
+                    if (next === null) {
+                      event.target.value = settings.crosshairLineColor ?? ""
+                    }
+                  }}
+                />
+              </div>
+              <div className="field">
+                <label className="field__label" htmlFor="crosshair-text-color">
+                  Badge text color
+                </label>
+                <input
+                  key={`text-${settings.crosshairTextColor ?? "theme"}`}
+                  id="crosshair-text-color"
+                  type="text"
+                  defaultValue={settings.crosshairTextColor ?? ""}
+                  disabled={!loaded}
+                  spellCheck={false}
+                  maxLength={64}
+                  placeholder="Theme default, e.g. tomato"
+                  onBlur={(event) => {
+                    const next = commitCrosshairColor(
+                      "crosshairTextColor",
+                      event.target.value,
+                    )
+                    if (next === null) {
+                      event.target.value = settings.crosshairTextColor ?? ""
+                    }
+                  }}
+                />
+              </div>
+            </fieldset>
+
+            <fieldset className="group">
+              <legend className="group__title">Measurement points</legend>
+              <p className="group__hint">
+                Press this key while the modifier is held to drop a point. Each new
+                point measures back to the previous one.
+              </p>
+              <div className="field">
+                <label className="field__label" htmlFor="crosshair-point-key">
+                  Point key
+                </label>
+                <input
+                  id="crosshair-point-key"
+                  type="text"
+                  value={settings.crosshairPointKey}
+                  disabled={!loaded}
+                  spellCheck={false}
+                  maxLength={1}
+                  placeholder="z"
+                  onChange={(event) => {
+                    if (!commitCrosshairPointKey(event.target.value)) {
+                      event.target.value = settings.crosshairPointKey
+                    }
+                  }}
+                />
+                <p className="field__detail">
+                  One letter or digit. The default is Z; holding Option/Alt then Z works on
+                  macOS layouts that reserve plain Alt+Z.
+                </p>
+              </div>
+            </fieldset>
+          </section>
           <section className="card" id="plugin" aria-labelledby="plugin-title">
             <header className="card__head">
               <span className="card__badge" aria-hidden="true">

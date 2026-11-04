@@ -7,6 +7,9 @@ import {
   createDefaultSettings,
   createMemorySettingsStore,
   isOriginDisabled,
+  normalizeCrosshair,
+  normalizeCrosshairPointKey,
+  normalizeCrosshairUnits,
   normalizeSettings,
   projectRootFor,
   setOriginDisabled,
@@ -96,6 +99,36 @@ describe("normalizeSettings", () => {
       // A bare host is normalized to an http origin rather than dropped.
       "http://bogus": "D:/proj",
     });
+  });
+  it("normalizes crosshair mode, units, colors and point key", () => {
+    expect(normalizeCrosshair(true)).toBe("both");
+    expect(normalizeCrosshair(false)).toBe(false);
+    expect(normalizeCrosshair("x")).toBe("x");
+    expect(normalizeCrosshair("nope")).toBe(false);
+
+    expect(normalizeCrosshairUnits("cm")).toEqual(["cm"]);
+    expect(normalizeCrosshairUnits(["px", "cm", "px", "bogus"])).toEqual([
+      "px",
+      "cm",
+    ]);
+    expect(normalizeCrosshairUnits([])).toEqual(["px"]);
+
+    expect(normalizeCrosshairPointKey(" P ")).toBe("p");
+    expect(normalizeCrosshairPointKey("7")).toBe("7");
+    expect(normalizeCrosshairPointKey("!")).toBe("z");
+
+    const settings = normalizeSettings({
+      crosshair: "y",
+      crosshairUnit: ["mm", "in"],
+      crosshairLineColor: " #ff3355 ",
+      crosshairTextColor: "tomato",
+      crosshairPointKey: " Q ",
+    });
+    expect(settings.crosshair).toBe("y");
+    expect(settings.crosshairUnit).toEqual(["mm", "in"]);
+    expect(settings.crosshairLineColor).toBe("#ff3355");
+    expect(settings.crosshairTextColor).toBe("tomato");
+    expect(settings.crosshairPointKey).toBe("q");
   });
 });
 

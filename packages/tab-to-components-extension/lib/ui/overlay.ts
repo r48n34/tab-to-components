@@ -13,7 +13,7 @@
  */
 
 import { formatNameLabel } from "../source/location";
-import type { ThemeMode } from "../types";
+import type { CrosshairMode, CrosshairUnit, ThemeMode } from "../types";
 import { createMenuIcon, type MenuIconName } from "./icons";
 
 /** Attribute on the light-DOM host element that owns the shadow root. */
@@ -22,6 +22,10 @@ export const UI_ATTRIBUTE = "data-ttc-ui";
 export const THEME_ATTRIBUTE = "data-ttc-theme";
 /** Marker attribute telling the extension's overlay apart from the Vite plugin's. */
 export const EXT_ATTRIBUTE = "data-ttc-ext";
+/** Attribute carrying the active crosshair mode. */
+export const CROSSHAIR_ATTRIBUTE = "data-ttc-crosshair";
+/** Attribute carrying the space-separated crosshair readout units. */
+export const CROSSHAIR_UNIT_ATTRIBUTE = "data-ttc-crosshair-unit";
 /** Highest practical z-index (2^31 - 1). */
 export const UI_Z_INDEX = "2147483647";
 
@@ -80,6 +84,9 @@ const STYLE_TEXT = `
   --ttc-shadow-toast: rgba(0, 0, 0, 0.5);
   --ttc-error-border: rgba(255, 120, 120, 0.55);
   --ttc-error-text: #ffd7d7;
+  --ttc-crosshair-line: rgba(231, 233, 240, 0.55);
+  --ttc-crosshair-tag-bg: #e7e9f0;
+  --ttc-crosshair-tag-text: #0e1016;
   --ttc-color-scheme: dark;
 }
 :host([data-ttc-theme="light"]) {
@@ -100,6 +107,9 @@ const STYLE_TEXT = `
   --ttc-shadow-toast: rgba(15, 23, 42, 0.16);
   --ttc-error-border: rgba(190, 35, 35, 0.45);
   --ttc-error-text: #b42318;
+  --ttc-crosshair-line: rgba(27, 33, 48, 0.35);
+  --ttc-crosshair-tag-bg: #1b2130;
+  --ttc-crosshair-tag-text: #f7f8fb;
   --ttc-color-scheme: light;
 }
 .ttc-outline {
@@ -230,6 +240,86 @@ const STYLE_TEXT = `
   border-color: var(--ttc-error-border);
   color: var(--ttc-error-text);
 }
+/* Cursor crosshair ruler: one vertical and one horizontal 1px line plus a
+   coordinate pill at the top and on the left. It sits below the outline and
+   labels (z-index 1) and never receives pointer events. */
+.ttc-crosshair {
+  position: fixed;
+  inset: 0;
+  display: none;
+  pointer-events: none;
+  z-index: 1;
+}
+.ttc-crosshair-v {
+  position: fixed;
+  top: 0;
+  width: 1px;
+  height: 100%;
+  background: var(--ttc-crosshair-line);
+}
+.ttc-crosshair-h {
+  position: fixed;
+  left: 0;
+  height: 1px;
+  width: 100%;
+  background: var(--ttc-crosshair-line);
+}
+.ttc-crosshair-tag {
+  position: fixed;
+  box-sizing: border-box;
+  min-width: 44px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--ttc-crosshair-tag-bg);
+  color: var(--ttc-crosshair-tag-text);
+  font: 11px/1.35 ${FONT_STACK};
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px var(--ttc-shadow-label);
+  pointer-events: none;
+}
+.ttc-crosshair-tag-x {
+  top: 4px;
+  transform: translateX(-50%);
+}
+.ttc-crosshair-tag-y {
+  left: 4px;
+  transform: translateY(-50%);
+}
+.ttc-crosshair-segment {
+  position: fixed;
+  height: 2px;
+  background: var(--ttc-crosshair-line);
+  transform-origin: 0 50%;
+  pointer-events: none;
+}
+.ttc-crosshair-point {
+  position: fixed;
+  box-sizing: border-box;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 2px solid var(--ttc-crosshair-tag-text);
+  background: var(--ttc-crosshair-line);
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 0 1px var(--ttc-shadow-label);
+  pointer-events: none;
+}
+.ttc-crosshair-distance {
+  position: fixed;
+  box-sizing: border-box;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--ttc-crosshair-tag-bg);
+  color: var(--ttc-crosshair-tag-text);
+  font: 11px/1.35 ${FONT_STACK};
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 2px 8px var(--ttc-shadow-label);
+  pointer-events: none;
+}
 `;
 
 /** What the hover label needs on each animation frame. */
@@ -279,6 +369,76 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
 
+/** Optional colors for the crosshair ruler; unset values use the theme. */
+export interface CrosshairColors {
+  /** CSS color of the ruler lines and the coordinate pill background. */
+  line?: string;
+  /** CSS color of the coordinate pill text. */
+  text?: string;
+}
+
+/** One measurement point placed by the crosshair point key. */
+interface CrosshairPoint {
+  x: number;
+  y: number;
+}
+
+/** Nodes created for the crosshair ruler (hidden until a pointer arrives). */
+interface CrosshairNodes {
+  box: HTMLDivElement;
+  vertical: HTMLDivElement;
+  horizontal: HTMLDivElement;
+  tagX: HTMLDivElement;
+  tagY: HTMLDivElement;
+  /** Holds points, connecting segments and distance labels. */
+  points: HTMLDivElement;
+}
+
+/** Half of the pill's 44px minimum width, for edge clamping. */
+const TAG_HALF_WIDTH = 22;
+/** Half of the pill's 20px line box, for edge clamping. */
+const TAG_HALF_HEIGHT = 10;
+/** Gap kept between a pill and the viewport edge. */
+const TAG_EDGE = 4;
+/** Perpendicular offset of a segment's distance label from the line. */
+const DISTANCE_OFFSET = 14;
+
+/** CSS reference pixel: browsers define 1in as exactly 96px. */
+const PX_PER_INCH = 96;
+const PX_PER_CM = PX_PER_INCH / 2.54;
+const PX_PER_MM = PX_PER_CM / 10;
+const FALLBACK_ROOT_FONT_SIZE = 16;
+/** Separator between the units shown in one pill. */
+const UNIT_SEPARATOR = " · ";
+
+/** Fixed-decimal number without trailing zeros (`7.90` → `7.9`, `80.00` → `80`). */
+function trimNumber(value: number, decimals: number): string {
+  const fixed = value.toFixed(decimals);
+  if (!fixed.includes(".")) return fixed;
+  return fixed.replace(/0+$/, "").replace(/\.$/, "");
+}
+
+/** Format a viewport CSS-pixel coordinate in the configured readout unit. */
+export function formatCrosshairValue(
+  value: number,
+  unit: CrosshairUnit,
+  rootFontSize = FALLBACK_ROOT_FONT_SIZE,
+): string {
+  switch (unit) {
+    case "cm":
+      return `${trimNumber(value / PX_PER_CM, 2)}cm`;
+    case "mm":
+      return `${trimNumber(value / PX_PER_MM, 2)}mm`;
+    case "in":
+      return `${trimNumber(value / PX_PER_INCH, 2)}in`;
+    case "rem":
+      return `${trimNumber(value / (rootFontSize || FALLBACK_ROOT_FONT_SIZE), 2)}rem`;
+    case "px":
+    default:
+      return `${Math.round(value)}px`;
+  }
+}
+
 /**
  * Owns every overlay node. Create once per inspector install and `destroy()`
  * it on uninstall.
@@ -296,8 +456,22 @@ export class Overlay {
   private menuIndex = 0;
   private menuIsOpen = false;
   private destroyed = false;
+  private readonly doc: Document;
+  private crosshairMode: CrosshairMode = false;
+  private crosshairUnits: readonly CrosshairUnit[] = ["px"];
+  private readonly crosshairNodes: CrosshairNodes;
+  private readonly crosshairPoints: CrosshairPoint[] = [];
 
-  constructor(doc: Document, theme: ThemeMode = "dark") {
+  constructor(
+    doc: Document,
+    theme: ThemeMode = "dark",
+    crosshair: CrosshairMode = false,
+    crosshairUnits: readonly CrosshairUnit[] = ["px"],
+    crosshairColors: CrosshairColors = {},
+  ) {
+    this.doc = doc;
+    this.crosshairMode = crosshair;
+    this.crosshairUnits = crosshairUnits;
     this.host = doc.createElement("div");
     this.host.setAttribute(UI_ATTRIBUTE, "");
     this.host.setAttribute(EXT_ATTRIBUTE, "");
@@ -314,6 +488,7 @@ export class Overlay {
       "border: 0",
       "background: none",
     ].join("; ");
+    this.applyCrosshairColors(crosshairColors);
 
     const shadow = this.host.attachShadow({ mode: "open" });
 
@@ -352,6 +527,24 @@ export class Overlay {
     this.toast.setAttribute("aria-live", "polite");
     shadow.append(this.toast);
 
+    const box = doc.createElement("div");
+    box.className = "ttc-crosshair";
+    box.setAttribute("aria-hidden", "true");
+    const vertical = doc.createElement("div");
+    vertical.className = "ttc-crosshair-v";
+    const horizontal = doc.createElement("div");
+    horizontal.className = "ttc-crosshair-h";
+    const tagX = doc.createElement("div");
+    tagX.className = "ttc-crosshair-tag ttc-crosshair-tag-x";
+    const tagY = doc.createElement("div");
+    tagY.className = "ttc-crosshair-tag ttc-crosshair-tag-y";
+    const points = doc.createElement("div");
+    points.className = "ttc-crosshair-points";
+    box.append(vertical, horizontal, tagX, tagY, points);
+    shadow.append(box);
+    this.crosshairNodes = { box, vertical, horizontal, tagX, tagY, points };
+    this.applyCrosshairMode(crosshair, crosshairUnits);
+
     const parent = doc.body ?? doc.documentElement;
     parent?.append(this.host);
   }
@@ -380,6 +573,62 @@ export class Overlay {
 
   private hide(el: HTMLElement): void {
     el.style.display = "none";
+  }
+
+  /** Apply custom ruler colors; omitted colors fall back to the theme tokens. */
+  private applyCrosshairColors(colors: CrosshairColors): void {
+    if (colors.line === undefined) {
+      this.host.style.removeProperty("--ttc-crosshair-line");
+      this.host.style.removeProperty("--ttc-crosshair-tag-bg");
+    } else {
+      this.host.style.setProperty("--ttc-crosshair-line", colors.line);
+      this.host.style.setProperty("--ttc-crosshair-tag-bg", colors.line);
+    }
+    if (colors.text === undefined) {
+      this.host.style.removeProperty("--ttc-crosshair-tag-text");
+    } else {
+      this.host.style.setProperty("--ttc-crosshair-tag-text", colors.text);
+    }
+  }
+
+  private applyCrosshairMode(
+    mode: CrosshairMode,
+    units: readonly CrosshairUnit[],
+  ): void {
+    const nodes = this.crosshairNodes;
+    this.hide(nodes.box);
+    if (mode === false) {
+      this.host.removeAttribute(CROSSHAIR_ATTRIBUTE);
+      this.host.removeAttribute(CROSSHAIR_UNIT_ATTRIBUTE);
+      return;
+    }
+    this.host.setAttribute(CROSSHAIR_ATTRIBUTE, mode);
+    this.host.setAttribute(CROSSHAIR_UNIT_ATTRIBUTE, units.join(" "));
+    this.show(nodes.vertical);
+    this.show(nodes.horizontal);
+    this.show(nodes.tagX);
+    this.show(nodes.tagY);
+    if (mode === "x") {
+      this.hide(nodes.horizontal);
+      this.hide(nodes.tagY);
+    } else if (mode === "y") {
+      this.hide(nodes.vertical);
+      this.hide(nodes.tagX);
+    }
+  }
+
+  /** Update ruler mode, units and colors without recreating the overlay. */
+  configureCrosshair(
+    mode: CrosshairMode,
+    units: readonly CrosshairUnit[],
+    colors: CrosshairColors = {},
+  ): void {
+    if (this.destroyed) return;
+    this.crosshairMode = mode;
+    this.crosshairUnits = units;
+    this.applyCrosshairColors(colors);
+    this.applyCrosshairMode(mode, units);
+    if (mode === false) this.clearCrosshairPoints();
   }
 
   /** Outline `rect` and place the `<Name /> file:line:column` label by the cursor. */
@@ -418,6 +667,141 @@ export class Overlay {
     if (this.destroyed) return;
     this.hide(this.outline);
     this.hide(this.label);
+  }
+
+  /**
+   * Move the crosshair ruler to viewport coordinates (x, y). Positions are
+   * rounded to whole CSS pixels, the pills show every configured unit, and
+   * they clamp to the viewport edges.
+   */
+  setCrosshair(x: number, y: number): void {
+    if (this.destroyed || this.crosshairMode === false || this.menuIsOpen) return;
+    const nodes = this.crosshairNodes;
+    const view = this.doc.defaultView;
+    const width = view?.innerWidth ?? 0;
+    const height = view?.innerHeight ?? 0;
+    const left = Math.round(x);
+    const top = Math.round(y);
+    const rootFontSize = this.crosshairRootFontSize();
+
+    this.show(nodes.box);
+    nodes.vertical.style.left = `${left}px`;
+    nodes.horizontal.style.top = `${top}px`;
+
+    nodes.tagX.textContent = this.crosshairReadout(left, rootFontSize);
+    // Measure the pill after setting the text: physical units are longer than
+    // a pixel count, so a fixed half-width would clip them at the edge.
+    const halfWidth = (nodes.tagX.offsetWidth || TAG_HALF_WIDTH * 2) / 2;
+    nodes.tagX.style.left = `${clamp(
+      left,
+      halfWidth + TAG_EDGE,
+      width - halfWidth - TAG_EDGE,
+    )}px`;
+    nodes.tagY.textContent = this.crosshairReadout(top, rootFontSize);
+    const halfHeight = (nodes.tagY.offsetHeight || TAG_HALF_HEIGHT * 2) / 2;
+    nodes.tagY.style.top = `${clamp(
+      top,
+      halfHeight + TAG_EDGE,
+      height - halfHeight - TAG_EDGE,
+    )}px`;
+  }
+
+  /**
+   * Drop a measurement point at viewport coordinates (x, y). The new point is
+   * connected to the previous point only, and that segment is labelled with
+   * its length in every configured unit.
+   */
+  addCrosshairPoint(x: number, y: number): void {
+    if (this.destroyed || this.crosshairMode === false || this.menuIsOpen) return;
+    const nodes = this.crosshairNodes;
+    const point: CrosshairPoint = { x: Math.round(x), y: Math.round(y) };
+    const previous = this.crosshairPoints[this.crosshairPoints.length - 1];
+    this.crosshairPoints.push(point);
+
+    if (previous !== undefined) {
+      this.appendCrosshairSegment(previous, point, nodes.points);
+    }
+    const dot = this.doc.createElement("div");
+    dot.className = "ttc-crosshair-point";
+    dot.style.left = `${point.x}px`;
+    dot.style.top = `${point.y}px`;
+    nodes.points.append(dot);
+    this.show(nodes.box);
+  }
+
+  /** Remove every measurement point, segment and distance label. */
+  clearCrosshairPoints(): void {
+    this.crosshairPoints.length = 0;
+    this.crosshairNodes.points.textContent = "";
+  }
+
+  /** Hide the crosshair ruler and its points; the next pointer move shows it. */
+  hideCrosshair(): void {
+    this.hide(this.crosshairNodes.box);
+  }
+
+  private crosshairRootFontSize(): number {
+    if (!this.crosshairUnits.includes("rem")) return FALLBACK_ROOT_FONT_SIZE;
+    const view = this.doc.defaultView;
+    return (
+      Number.parseFloat(
+        view?.getComputedStyle(this.doc.documentElement).fontSize ?? "",
+      ) || FALLBACK_ROOT_FONT_SIZE
+    );
+  }
+
+  private crosshairReadout(value: number, rootFontSize: number): string {
+    return this.crosshairUnits
+      .map((unit) => formatCrosshairValue(value, unit, rootFontSize))
+      .join(UNIT_SEPARATOR);
+  }
+
+  private appendCrosshairSegment(
+    start: CrosshairPoint,
+    end: CrosshairPoint,
+    layer: HTMLDivElement,
+  ): void {
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const length = Math.hypot(dx, dy);
+    const angle = length === 0 ? 0 : Math.atan2(dy, dx);
+    const view = this.doc.defaultView;
+    const width = view?.innerWidth ?? 0;
+    const height = view?.innerHeight ?? 0;
+
+    const line = this.doc.createElement("div");
+    line.className = "ttc-crosshair-segment";
+    line.style.left = `${start.x}px`;
+    line.style.top = `${start.y}px`;
+    line.style.width = `${length}px`;
+    line.style.transform = `rotate(${angle}rad)`;
+    layer.append(line);
+
+    const label = this.doc.createElement("div");
+    label.className = "ttc-crosshair-distance";
+    label.textContent = this.crosshairReadout(
+      length,
+      this.crosshairRootFontSize(),
+    );
+    layer.append(label);
+
+    const halfWidth = (label.offsetWidth || TAG_HALF_WIDTH * 2) / 2;
+    const halfHeight = (label.offsetHeight || TAG_HALF_HEIGHT * 2) / 2;
+    // Offset the label perpendicular to the segment so it does not cover it.
+    const normalX = length === 0 ? 0 : -dy / length;
+    const normalY = length === 0 ? 1 : dx / length;
+    const labelX = (start.x + end.x) / 2 + normalX * DISTANCE_OFFSET;
+    const labelY = (start.y + end.y) / 2 + normalY * DISTANCE_OFFSET;
+    label.style.left = `${clamp(
+      labelX,
+      halfWidth + TAG_EDGE,
+      width - halfWidth - TAG_EDGE,
+    )}px`;
+    label.style.top = `${clamp(
+      labelY,
+      halfHeight + TAG_EDGE,
+      height - halfHeight - TAG_EDGE,
+    )}px`;
   }
 
   /** Show a transient message near the bottom center of the viewport. */
@@ -465,6 +849,7 @@ export class Overlay {
     if (this.destroyed || items.length === 0) return;
 
     this.hideHover();
+    this.hideCrosshair();
     this.menuItems = [...items];
     this.menuIndex = 0;
     this.menu.textContent = "";
@@ -630,6 +1015,8 @@ export class Overlay {
     if (this.destroyed) return;
     this.closeMenu();
     this.hideHover();
+    this.clearCrosshairPoints();
+    this.hideCrosshair();
     this.hideToast();
     this.destroyed = true;
     this.host.remove();
