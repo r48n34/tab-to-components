@@ -141,7 +141,8 @@ Remix v2 supports Vite 5/6 and React 18. Remix v1 uses its classic esbuild compi
 | Action | Result |
 | --- | --- |
 | Hold <kbd>Alt</kbd> + move the mouse | The element under the cursor is outlined; a label shows `<Component />` and `file:line:column`. |
-| Move the mouse (with `crosshair` on) | An optional ruler follows the pointer: a vertical line with the viewport `x` pill at the top and a horizontal line with the `y` pill on the left. See [Crosshair](#crosshair). |
+| Hold the modifier (with `crosshair` on) | An optional ruler appears at the pointer while the `keyboard` modifier is held: a vertical line with the viewport `x` pill at the top and a horizontal line with the `y` pill on the left. Release the key to hide it. See [Crosshair](#crosshair). |
+| Hold the modifier + press the point key (default <kbd>Z</kbd>) | Drops a measurement point at the pointer; each new point is joined to the previous one and the segment is labelled with its length in the `crosshairUnit` units. Release the modifier to clear all points. See [Crosshair](#crosshair). |
 | <kbd>Alt</kbd> + left click | Opens the **source action picker** for the nearest component usage site (e.g. the `<Button />` line in your page): **Open in IDE**, **Copy file name** (`MyBox.tsx`), **Copy full path** (`D:/proj/app/components/MyBox.tsx`), or open directly in a specific IDE — VS Code, Cursor, WebStorm or Trae. Optional `copy-ai-context`, `copy-mention`, `copy-markdown` and `copy-chain` rows cover AI tools and chat, and `customActions` adds team-defined copy rows. Falls back to the clicked element when it was rendered directly. |
 | <kbd>Alt</kbd> + right click | Opens the **component chain picker** listing every marked JSX ancestor (`<button />`, `<Button />`, `<Card />`, …). Click a row, or use <kbd>↑</kbd>/<kbd>↓</kbd>/<kbd>Enter</kbd>, <kbd>Esc</kbd> to close. |
 | After an action | A short toast confirms the file that was opened or the text that was copied. |
@@ -275,15 +276,19 @@ The choice is rendered as a `data-ttc-theme` attribute on the `[data-ttc-ui]` ho
 
 ## Crosshair
 
-Enable the optional **crosshair ruler** to read the pointer's viewport position while you match a design. When it is on, a thin vertical line follows the cursor with a pill at the top showing its `x`, and a thin horizontal line follows with a pill on the left showing its `y`. The readout is rounded CSS pixels, and it runs alongside the modifier-key inspector — no key has to be held.
+Enable the optional **crosshair ruler** to read the pointer's viewport position while you match a design. When it is on, a thin vertical line follows the cursor with a pill at the top showing its `x`, and a thin horizontal line follows with a pill on the left showing its `y`. The ruler is tied to the modifier-key inspector: it appears when you press the configured `keyboard` modifier (default <kbd>Alt</kbd>) and disappears when you release it, so it never covers the app while you are not inspecting. Press the modifier to reveal it at the current pointer position without moving the mouse, then move while holding the key to update the readout. While the modifier is held, press the configured point key (default <kbd>Z</kbd>) to drop a measurement point at the pointer; move and press again to add the next one. Each point is measured only against the point before it — three points produce two labelled segments — and the labels use the same `crosshairUnit` list. Releasing the modifier clears every point. Set `crosshairUnit` to `"cm"`, `"mm"`, `"in"` or `"rem"` to read it in another unit, or pass an array such as `["px", "cm"]` to show several units in the same pill, separated by `·`. Physical units use the CSS reference pixel (`1in = 96px`), so they match design tools rather than the screen's physical size; `"rem"` follows the document root font size. If the default ruler is hard to see against your app, set `crosshairLineColor` and `crosshairTextColor` to any CSS color (hex, `rgb()`, `hsl()`, named colors, …). The line color paints both the guide lines and the coordinate pill backgrounds, while the text color sets the pill text; when omitted, the current theme palette is used. Pair the two when a custom line color needs a more readable label.
 
 ```ts
 tabToComponents({
   crosshair: "both", // default: false; "both", "x" or "y"
+  crosshairUnit: ["px", "cm"], // default: "px"; one unit or an array shown together
+  crosshairLineColor: "#ff3355", // default: the theme's line + pill color
+  crosshairTextColor: "#ffffff", // default: the theme's pill text color
+  crosshairPointKey: "z", // default: "z"; one letter or digit
 });
 ```
 
-`"x"` draws only the vertical line and its top pill, `"y"` only the horizontal line and its left pill, and `true` is a shortcut for `"both"`. The lines and pills use the same `data-ttc-theme` palette as the rest of the overlay, so `theme: "light"` renders dark ink on light pills. The ruler hides while a picker is open, when the pointer leaves the window, and when the window loses focus; it only needs the browser runtime, so it is inert with `overlay: false`.
+`"x"` draws only the vertical line and its top pill, `"y"` only the horizontal line and its left pill, and `true` is a shortcut for `"both"`. The lines and pills use the same `data-ttc-theme` palette as the rest of the overlay, so `theme: "light"` renders dark ink on light pills. `crosshairLineColor` paints the lines and pill backgrounds, and `crosshairTextColor` paints the pill text; the rest of the overlay keeps the theme palette. The ruler hides while a picker is open, when the pointer leaves the window, and when the window loses focus; it only needs the browser runtime, so it is inert with `overlay: false`.
 
 ---
 
@@ -298,6 +303,10 @@ tabToComponents({
   menu: true,
   theme: "dark",               // "dark" (default) or "light"
   crosshair: false,            // false (default), "both", "x" or "y"
+  crosshairUnit: ["px", "cm"], // "px" (default) or several units together
+  crosshairLineColor: "#ff3355", // default: theme line + pill color
+  crosshairTextColor: "#ffffff", // default: theme pill text color
+  crosshairPointKey: "z",     // default: "z"; one letter or digit
   overlay: "all",
   ssr: true,
   editor: "code",              // default: VS Code; "cursor", "trae", { command, args }, fn
@@ -316,7 +325,11 @@ tabToComponents({
 | `customActions` | `[]` | Extra **copy-only** rows appended after `clickActions`, each with an `id`, `label`, `copy` template and optional `icon`. Templates support `{file}`, `{absPath}`, `{name}`, `{line}`, `{column}`, `{location}` and `{chain}`. See [Custom copy actions](#custom-copy-actions). |
 | `menu` | `true` | Enable the modifier + right-click chain picker. |
 | `theme` | `"dark"` | Color theme of the overlay: `"dark"` (the original blue-on-black UI) or `"light"` (white surfaces with darker blue accents for contrast). See [Theme](#theme). |
-| `crosshair` | `false` | Optional ruler that follows the pointer and shows the viewport `x`/`y` in pills: `false`, `"both"`, `"x"` or `"y"`. `true` is an alias for `"both"`. Needs the browser runtime (`overlay: "all"` or `"entry"`). See [Crosshair](#crosshair). |
+| `crosshair` | `false` | Optional ruler that follows the pointer and shows the viewport `x`/`y` in pills: `false`, `"both"`, `"x"` or `"y"`. `true` is an alias for `"both"`. Only visible while the `keyboard` modifier is held. Needs the browser runtime (`overlay: "all"` or `"entry"`). See [Crosshair](#crosshair). |
+| `crosshairUnit` | `"px"` | Unit(s) of the crosshair pills: one of `"px"`, `"cm"`, `"mm"`, `"in"`, `"rem"`, or an ordered array such as `["px", "cm"]` shown together in each pill. Physical units use the CSS reference pixel (`1in = 96px`); `"rem"` follows the root font size. The lines still track the pointer in CSS pixels. |
+| `crosshairLineColor` | theme | CSS color of the ruler lines and coordinate pill backgrounds: hex, `rgb()`/`hsl()`/`hwb()`/`lab()`/`lch()`/`oklab()`/`oklch()`/`color()`, or a named color. Invalid values are ignored, keeping the theme color. See [Crosshair](#crosshair). |
+| `crosshairTextColor` | theme | CSS color of the crosshair pill text; same formats as `crosshairLineColor`. Invalid values are ignored. |
+| `crosshairPointKey` | `"z"` | Key that drops a measurement point at the pointer while the crosshair is visible: one letter or digit, case-insensitive. Each new point is joined to the previous point only, and every segment label uses `crosshairUnit`. Releasing the `keyboard` modifier clears all points. Falls back to the physical key code when the modifier changes the character (e.g. macOS <kbd>Option</kbd>+<kbd>Z</kbd>). See [Crosshair](#crosshair). |
 | `overlay` | `"all"` | `"all"` injects the browser runtime through client modules (works in every framework, including React Router's streamed SSR). `"entry"` only injects it into `entry.client.*` modules. `false` disables the runtime (markers only). |
 | `ssr` | `true` | Also annotate server-rendered markup, keeping server and client props identical during hydration. Set `false` if you snapshot SSR HTML. |
 | `include` / `exclude` | — | RegExp or RegExp[] matched against project-relative paths. `node_modules`, `dist`, `build`, `.react-router` and `public` are always excluded. |

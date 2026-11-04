@@ -7,6 +7,7 @@
  * straight to `install()`.
  */
 
+import { normalizeCssColor } from "../color";
 import type { MenuIconName } from "./icons";
 
 /** Modifier keys the overlay understands. */
@@ -29,6 +30,18 @@ export type ThemeMode = "dark" | "light";
  * `"y"` only the horizontal one. Coordinates are viewport CSS pixels.
  */
 export type CrosshairMode = "both" | "x" | "y" | false;
+
+/**
+ * Unit of the crosshair ruler readout. `px` is the rounded viewport CSS pixel
+ * position; `cm`, `mm` and `in` use the CSS reference pixel (`1in = 96px`);
+ * `rem` uses the document root font size.
+ */
+export type CrosshairUnit = "px" | "cm" | "mm" | "in" | "rem";
+
+/** One crosshair unit, or an ordered list of units shown together. */
+export type CrosshairUnitSelection =
+  | CrosshairUnit
+  | readonly CrosshairUnit[];
 
 /** IDE a per-IDE open action launches on the dev-server machine. */
 export type EditorIde = "code" | "cursor" | "webstorm" | "trae";
@@ -147,12 +160,43 @@ export interface ClientConfig {
    * Default `false`.
    */
   crosshair?: CrosshairMode;
+  /**
+   * Unit(s) of the crosshair ruler pills: one unit or an ordered list shown
+   * together, e.g. `["px", "cm"]`. Omitted from the injected config when it is
+   * the default (`["px"]`).
+   */
+  crosshairUnit?: CrosshairUnitSelection;
+  /**
+   * CSS color of the crosshair ruler lines and the coordinate pill
+   * backgrounds, e.g. `"#ff3355"` or `"tomato"`. Omitted from the injected
+   * config when unset, so the theme palette applies.
+   */
+  crosshairLineColor?: string;
+  /**
+   * CSS color of the crosshair pill text. Omitted from the injected config
+   * when unset, so the theme palette applies.
+   */
+  crosshairTextColor?: string;
+  /**
+   * Key that drops a measurement point at the pointer while the crosshair is
+   * visible. A single letter or digit, case-insensitive. Default `"z"`.
+   */
+  crosshairPointKey?: string;
   /** Endpoint path relative to `base`. Default "__open-in-editor". */
   editorEndpoint: string;
 }
 
+/** Canonical config after `resolveConfig()` has normalized every field. */
+export type ResolvedClientConfig = Omit<
+  ClientConfig,
+  "crosshairUnit" | "crosshairPointKey"
+> & {
+  crosshairUnit: CrosshairUnit[];
+  crosshairPointKey: string;
+};
+
 /** Safe defaults, used for any field the caller leaves out. */
-export const DEFAULT_CONFIG: ClientConfig = {
+export const DEFAULT_CONFIG: ResolvedClientConfig = {
   version: "0.0.0",
   root: "",
   base: "/",
@@ -163,6 +207,8 @@ export const DEFAULT_CONFIG: ClientConfig = {
   menu: true,
   theme: "dark",
   crosshair: false,
+  crosshairUnit: ["px"],
+  crosshairPointKey: "z",
   editorEndpoint: "__open-in-editor",
 };
 
@@ -170,6 +216,7 @@ const MODIFIER_KEYS: readonly ModifierKey[] = ["alt", "ctrl", "meta", "shift"];
 const OPEN_MODES: readonly OpenMode[] = ["component", "element", "menu"];
 const THEMES: readonly ThemeMode[] = ["dark", "light"];
 const CROSSHAIRS: readonly CrosshairMode[] = ["both", "x", "y"];
+const CROSSHAIR_UNITS: readonly CrosshairUnit[] = ["px", "cm", "mm", "in", "rem"];
 const CLICK_ACTIONS: readonly ClickAction[] = [
   "open",
   "open-code",
@@ -279,6 +326,40 @@ function normalizeCrosshair(crosshair: unknown): CrosshairMode {
     : false;
 }
 
+/**
+ * Normalize a single unit or a list of units: keep the known ones in order,
+ * drop duplicates, and fall back to `["px"]` when nothing usable is left.
+ */
+export function normalizeCrosshairUnits(unit: unknown): CrosshairUnit[] {
+  const raw: readonly unknown[] =
+    typeof unit === "string" ? [unit] : Array.isArray(unit) ? unit : [];
+  const normalized: CrosshairUnit[] = [];
+  for (const candidate of raw) {
+    if (
+      typeof candidate === "string" &&
+      CROSSHAIR_UNITS.includes(candidate as CrosshairUnit) &&
+      !normalized.includes(candidate as CrosshairUnit)
+    ) {
+      normalized.push(candidate as CrosshairUnit);
+    }
+  }
+  return normalized.length > 0 ? normalized : ["px"];
+}
+
+const CROSSHAIR_POINT_KEY = /^[a-z0-9]$/i;
+
+/**
+ * Normalize the measurement-point key: a single letter or digit,
+ * case-insensitive, trimmed. Anything else falls back to `"z"`.
+ */
+export function normalizeCrosshairPointKey(value: unknown): string {
+  if (typeof value !== "string") return DEFAULT_CONFIG.crosshairPointKey;
+  const key = value.trim();
+  return CROSSHAIR_POINT_KEY.test(key)
+    ? key.toLowerCase()
+    : DEFAULT_CONFIG.crosshairPointKey;
+}
+
 function normalizeClickActions(
   actions: readonly unknown[] | string | undefined,
 ): ClickAction[] {
@@ -307,7 +388,9 @@ function normalizeEndpoint(endpoint: unknown): string {
  * Merge a (possibly partial) config with the defaults and normalize every
  * field so downstream code can rely on the invariants documented above.
  */
-export function resolveConfig(input?: Partial<ClientConfig> | null): ClientConfig {
+export function resolveConfig(
+  input?: Partial<ClientConfig> | null,
+): ResolvedClientConfig {
   const source: Partial<ClientConfig> = input ?? {};
   return {
     version: typeof source.version === "string" ? source.version : DEFAULT_CONFIG.version,
@@ -320,6 +403,10 @@ export function resolveConfig(input?: Partial<ClientConfig> | null): ClientConfi
     menu: source.menu === undefined ? DEFAULT_CONFIG.menu : Boolean(source.menu),
     theme: normalizeTheme(source.theme),
     crosshair: normalizeCrosshair(source.crosshair),
+    crosshairUnit: normalizeCrosshairUnits(source.crosshairUnit),
+    crosshairLineColor: normalizeCssColor(source.crosshairLineColor),
+    crosshairTextColor: normalizeCssColor(source.crosshairTextColor),
+    crosshairPointKey: normalizeCrosshairPointKey(source.crosshairPointKey),
     editorEndpoint: normalizeEndpoint(source.editorEndpoint),
   };
 }

@@ -82,6 +82,18 @@ export function isModifierHeld(
   });
 }
 
+/**
+ * True when a keyboard event matches the configured measurement-point key.
+ * `event.key` is the character the browser produced, which on macOS becomes an
+ * Option symbol for many letters (`Option+Z` is `Ω`); fall back to the physical
+ * code so the default Z shortcut still works there.
+ */
+function isPointKey(event: KeyboardEvent, key: string): boolean {
+  if (event.key.toLowerCase() === key) return true;
+  if (/^[a-z]$/.test(key)) return event.code === `Key${key.toUpperCase()}`;
+  return event.code === `Digit${key}` || event.code === `Numpad${key}`;
+}
+
 function asElement(value: EventTarget | null): Element | null {
   if (value === null || typeof value !== "object") return null;
   return (value as Node).nodeType === 1 ? (value as Element) : null;
@@ -135,7 +147,16 @@ export function install(userConfig?: Partial<ClientConfig> | null): () => void {
     ...(userConfig ?? {}),
   });
 
-  const overlay = new Overlay(document, config.theme, config.crosshair ?? false);
+  const overlay = new Overlay(
+    document,
+    config.theme,
+    config.crosshair ?? false,
+    config.crosshairUnit,
+    {
+      line: config.crosshairLineColor,
+      text: config.crosshairTextColor,
+    },
+  );
   const listeners: RegisteredListener[] = [];
 
   let armed = false;
@@ -145,6 +166,11 @@ export function install(userConfig?: Partial<ClientConfig> | null): () => void {
   let pendingTarget: Element | null = null;
   let pendingX = 0;
   let pendingY = 0;
+  // Last pointer position, so pressing the modifier can reveal the crosshair
+  // without waiting for the next mouse move.
+  let pointerKnown = false;
+  let pointerX = 0;
+  let pointerY = 0;
 
   function listen(
     target: ListenerTarget,
@@ -346,25 +372,57 @@ export function install(userConfig?: Partial<ClientConfig> | null): () => void {
     }
     if (isModifierHeld(event, config.keyboard)) {
       armed = true;
+      if (
+        config.crosshair &&
+        isPointKey(event, config.crosshairPointKey) &&
+        !overlay.isMenuOpen &&
+        pointerKnown
+      ) {
+        // Swallow the key even on auto-repeat so typing Z cannot leak into the
+        // page while the ruler is armed; only the first press drops a point.
+        event.preventDefault();
+        event.stopPropagation();
+        if (!event.repeat) {
+          overlay.setCrosshair(pointerX, pointerY);
+          overlay.addCrosshairPoint(pointerX, pointerY);
+        }
+        return;
+      }
+      if (config.crosshair && pointerKnown) {
+        overlay.setCrosshair(pointerX, pointerY);
+      }
       return;
     }
   };
 
   const onKeyUp: EventListener = (rawEvent) => {
     const event = rawEvent as KeyboardEvent;
-    if (!isModifierHeld(event, config.keyboard)) disarm();
+    if (!isModifierHeld(event, config.keyboard)) {
+      disarm();
+      overlay.clearCrosshairPoints();
+      overlay.hideCrosshair();
+    }
   };
 
   const onWindowBlur: EventListener = () => {
     disarm();
+    overlay.clearCrosshairPoints();
     overlay.hideCrosshair();
   };
 
   const onMouseMove: EventListener = (rawEvent) => {
     const event = rawEvent as MouseEvent;
-    // The crosshair ruler tracks the pointer independently of the modifier.
-    if (config.crosshair) overlay.setCrosshair(event.clientX, event.clientY);
-    if (!isModifierHeld(event, config.keyboard)) {
+    const modifierHeld = isModifierHeld(event, config.keyboard);
+    pointerKnown = true;
+    pointerX = event.clientX;
+    pointerY = event.clientY;
+    // The crosshair ruler is only visible while the configured modifier is
+    // held: it appears on key press and disappears on key release.
+    if (config.crosshair) {
+      if (modifierHeld) overlay.setCrosshair(pointerX, pointerY);
+      else overlay.hideCrosshair();
+    }
+    if (!modifierHeld) {
       disarm();
       return;
     }

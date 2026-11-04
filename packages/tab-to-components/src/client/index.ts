@@ -32,14 +32,23 @@ export type {
   ClickAction,
   ClientConfig,
   CrosshairMode,
+  CrosshairUnit,
+  CrosshairUnitSelection,
   CustomAction,
   CustomActionIcon,
   EditorIde,
   ModifierKey,
   OpenMode,
+  ResolvedClientConfig,
   ThemeMode,
 } from "./config";
-export { DEFAULT_CLICK_ACTIONS, DEFAULT_CONFIG, resolveConfig } from "./config";
+export {
+  DEFAULT_CLICK_ACTIONS,
+  DEFAULT_CONFIG,
+  normalizeCrosshairPointKey,
+  normalizeCrosshairUnits,
+  resolveConfig,
+} from "./config";
 export type { EditorTarget, EditorUrlConfig, EditorUrlInput, FetchLike, OpenInEditorOptions } from "./editor";
 export {
   buildEditorUrl,

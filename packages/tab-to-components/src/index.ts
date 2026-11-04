@@ -32,6 +32,8 @@ export {
   type TabToComponentsActionIcon,
   type TabToComponentsClickAction,
   type TabToComponentsCrosshairMode,
+  type TabToComponentsCrosshairUnit,
+  type TabToComponentsCrosshairUnitSelection,
   type TabToComponentsCustomAction,
   type TabToComponentsCustomActionPlaceholder,
   type TabToComponentsOpenMode,

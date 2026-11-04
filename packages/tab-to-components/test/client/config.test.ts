@@ -74,6 +74,103 @@ describe("resolveConfig", () => {
     expect(resolveConfig({ crosshair: 1 } as never).crosshair).toBe(false);
   });
 
+  it("defaults the crosshair readout to pixels and accepts each unit", () => {
+    expect(DEFAULT_CONFIG.crosshairUnit).toEqual(["px"]);
+    expect(resolveConfig().crosshairUnit).toEqual(["px"]);
+    expect(resolveConfig({ crosshairUnit: "cm" }).crosshairUnit).toEqual(["cm"]);
+    expect(resolveConfig({ crosshairUnit: "mm" }).crosshairUnit).toEqual(["mm"]);
+    expect(resolveConfig({ crosshairUnit: "in" }).crosshairUnit).toEqual(["in"]);
+    expect(resolveConfig({ crosshairUnit: "rem" }).crosshairUnit).toEqual([
+      "rem",
+    ]);
+  });
+
+  it("keeps several crosshair units in order and dedupes them", () => {
+    expect(
+      resolveConfig({ crosshairUnit: ["px", "cm"] }).crosshairUnit,
+    ).toEqual(["px", "cm"]);
+    expect(
+      resolveConfig({ crosshairUnit: ["cm", "px", "cm", "in"] }).crosshairUnit,
+    ).toEqual(["cm", "px", "in"]);
+  });
+
+  it("drops unknown crosshair units and falls back to pixels", () => {
+    expect(
+      resolveConfig({ crosshairUnit: ["furlong", "cm"] as never }).crosshairUnit,
+    ).toEqual(["cm"]);
+    expect(
+      resolveConfig({ crosshairUnit: ["furlong"] as never }).crosshairUnit,
+    ).toEqual(["px"]);
+    expect(resolveConfig({ crosshairUnit: [] }).crosshairUnit).toEqual(["px"]);
+    expect(resolveConfig({ crosshairUnit: "furlong" as never }).crosshairUnit).toEqual(
+      ["px"],
+    );
+    expect(resolveConfig({ crosshairUnit: 1 } as never).crosshairUnit).toEqual([
+      "px",
+    ]);
+  });
+
+  it("defaults the measurement point key to Z and normalizes letters/digits", () => {
+    expect(DEFAULT_CONFIG.crosshairPointKey).toBe("z");
+    expect(resolveConfig().crosshairPointKey).toBe("z");
+    expect(resolveConfig({ crosshairPointKey: " P " }).crosshairPointKey).toBe(
+      "p",
+    );
+    expect(resolveConfig({ crosshairPointKey: "Z" }).crosshairPointKey).toBe("z");
+    expect(resolveConfig({ crosshairPointKey: "7" }).crosshairPointKey).toBe("7");
+  });
+
+  it("falls back to Z for invalid measurement point keys", () => {
+    for (const key of ["", "ab", "!", " ", 42]) {
+      expect(
+        resolveConfig({ crosshairPointKey: key as never }).crosshairPointKey,
+      ).toBe("z");
+    }
+  });
+
+  it("keeps crosshair colors unset by default and trims valid CSS colors", () => {
+    expect(DEFAULT_CONFIG.crosshairLineColor).toBeUndefined();
+    expect(DEFAULT_CONFIG.crosshairTextColor).toBeUndefined();
+    expect(resolveConfig().crosshairLineColor).toBeUndefined();
+    expect(resolveConfig().crosshairTextColor).toBeUndefined();
+
+    expect(
+      resolveConfig({ crosshairLineColor: " #ff3355 " }).crosshairLineColor,
+    ).toBe("#ff3355");
+    expect(
+      resolveConfig({ crosshairLineColor: "rgb(255 51 85 / 60%)" })
+        .crosshairLineColor,
+    ).toBe("rgb(255 51 85 / 60%)");
+    expect(
+      resolveConfig({ crosshairTextColor: "RebeccaPurple" }).crosshairTextColor,
+    ).toBe("RebeccaPurple");
+    expect(
+      resolveConfig({ crosshairTextColor: "oklch(70% 0.2 20)" }).crosshairTextColor,
+    ).toBe("oklch(70% 0.2 20)");
+  });
+
+  it("drops invalid crosshair colors so the theme palette applies", () => {
+    expect(
+      resolveConfig({ crosshairLineColor: "url(evil)" }).crosshairLineColor,
+    ).toBeUndefined();
+    expect(
+      resolveConfig({ crosshairLineColor: "#12" }).crosshairLineColor,
+    ).toBeUndefined();
+    expect(
+      resolveConfig({ crosshairLineColor: "not-a-color" }).crosshairLineColor,
+    ).toBeUndefined();
+    expect(
+      resolveConfig({ crosshairTextColor: "red; background: blue" })
+        .crosshairTextColor,
+    ).toBeUndefined();
+    expect(
+      resolveConfig({ crosshairTextColor: "x".repeat(65) }).crosshairTextColor,
+    ).toBeUndefined();
+    expect(
+      resolveConfig({ crosshairTextColor: 42 as never }).crosshairTextColor,
+    ).toBeUndefined();
+  });
+
   it("defaults the click action picker to open, file name and full path", () => {
     expect(DEFAULT_CONFIG.clickActions).toEqual([
       "open",

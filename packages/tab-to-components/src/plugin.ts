@@ -1,4 +1,5 @@
 import type { Plugin, ResolvedConfig, ViteDevServer } from "vite";
+import { normalizeCssColor } from "./color.js";
 import { normalizePath, resolveModuleId, isClientEntryModule } from "./paths.js";
 import { transformSource } from "./transform.js";
 import type { CreateFilterOptions } from "./paths.js";
@@ -31,6 +32,7 @@ import {
   type InspectorKey,
   type TabToComponentsClickAction,
   type TabToComponentsCrosshairMode,
+  type TabToComponentsCrosshairUnit,
   type TabToComponentsOpenMode,
   type TabToComponentsTheme,
   type ResolvedOptions,
@@ -44,6 +46,39 @@ const VALID_OPEN_MODES: TabToComponentsOpenMode[] = [
 ];
 const VALID_THEMES: TabToComponentsTheme[] = ["dark", "light"];
 const VALID_CROSSHAIRS: TabToComponentsCrosshairMode[] = ["both", "x", "y"];
+const VALID_CROSSHAIR_UNITS: TabToComponentsCrosshairUnit[] = [
+  "px",
+  "cm",
+  "mm",
+  "in",
+  "rem",
+];
+
+/** Keep the known units in order, dedupe them, and default to `["px"]`. */
+function resolveCrosshairUnits(value: unknown): TabToComponentsCrosshairUnit[] {
+  const raw: readonly unknown[] =
+    typeof value === "string" ? [value] : Array.isArray(value) ? value : [];
+  const units: TabToComponentsCrosshairUnit[] = [];
+  for (const candidate of raw) {
+    if (
+      VALID_CROSSHAIR_UNITS.includes(candidate as TabToComponentsCrosshairUnit) &&
+      !units.includes(candidate as TabToComponentsCrosshairUnit)
+    ) {
+      units.push(candidate as TabToComponentsCrosshairUnit);
+    }
+  }
+  return units.length > 0 ? units : ["px"];
+}
+
+const CROSSHAIR_POINT_KEY = /^[a-z0-9]$/i;
+
+/** Single letter/digit, case-insensitive; falls back to the default `"z"`. */
+function resolveCrosshairPointKey(value: unknown): string {
+  if (typeof value !== "string") return "z";
+  const key = value.trim();
+  return CROSSHAIR_POINT_KEY.test(key) ? key.toLowerCase() : "z";
+}
+
 const VALID_CLICK_ACTIONS: TabToComponentsClickAction[] = [
   "open",
   "open-code",
@@ -147,6 +182,9 @@ function resolveOptions(options: TabToComponentsOptions): ResolvedOptions {
       ? options.exclude
       : [options.exclude]
     : [];
+  const crosshairLineColor = normalizeCssColor(options.crosshairLineColor);
+  const crosshairTextColor = normalizeCssColor(options.crosshairTextColor);
+  const crosshairPointKey = resolveCrosshairPointKey(options.crosshairPointKey);
 
   return {
     keyboard: keys.length > 0 ? keys : ["alt"],
@@ -166,6 +204,10 @@ function resolveOptions(options: TabToComponentsOptions): ResolvedOptions {
             )
           ? (options.crosshair as TabToComponentsCrosshairMode)
           : false,
+    crosshairUnit: resolveCrosshairUnits(options.crosshairUnit),
+    ...(crosshairLineColor === undefined ? {} : { crosshairLineColor }),
+    ...(crosshairTextColor === undefined ? {} : { crosshairTextColor }),
+    crosshairPointKey,
     overlay: options.overlay ?? "all",
     ssr: options.ssr !== false,
     include,
@@ -378,6 +420,26 @@ export function tabToComponents(
     // (and the crosshair off) when the option is not configured.
     if (resolved.crosshair !== false) {
       config.crosshair = resolved.crosshair;
+    }
+    // The pixel-only readout is the default, so only a non-default unit list
+    // changes the injected prelude.
+    if (
+      resolved.crosshairUnit.length !== 1 ||
+      resolved.crosshairUnit[0] !== "px"
+    ) {
+      config.crosshairUnit = [...resolved.crosshairUnit];
+    }
+    // Color overrides are omitted when unset, so the injected prelude keeps
+    // using the theme's built-in crosshair palette.
+    if (resolved.crosshairLineColor !== undefined) {
+      config.crosshairLineColor = resolved.crosshairLineColor;
+    }
+    if (resolved.crosshairTextColor !== undefined) {
+      config.crosshairTextColor = resolved.crosshairTextColor;
+    }
+    // `z` is the default point key, so only a custom key changes the prelude.
+    if (resolved.crosshairPointKey !== "z") {
+      config.crosshairPointKey = resolved.crosshairPointKey;
     }
     return config;
   }

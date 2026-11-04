@@ -145,6 +145,27 @@ export type TabToComponentsTheme = "dark" | "light";
 export type TabToComponentsCrosshairMode = "both" | "x" | "y";
 
 /**
+ * Unit of the coordinates shown in the crosshair ruler pills.
+ *
+ * - `px` (default): rounded viewport CSS pixels.
+ * - `cm`, `mm`, `in`: physical units derived from the CSS reference pixel
+ *   (`1in = 96px`), independent of the device pixel ratio.
+ * - `rem`: the document root font size.
+ *
+ * The lines themselves always track the pointer in CSS pixels; only the
+ * readout changes.
+ */
+export type TabToComponentsCrosshairUnit = "px" | "cm" | "mm" | "in" | "rem";
+
+/**
+ * One crosshair unit, or an ordered list of units shown together in the pills,
+ * e.g. `["px", "cm"]`. Order is preserved and duplicates are dropped.
+ */
+export type TabToComponentsCrosshairUnitSelection =
+  | TabToComponentsCrosshairUnit
+  | readonly TabToComponentsCrosshairUnit[];
+
+/**
  * A source location the dev server should open in the editor.
  * Emitted by the browser runtime, consumed by the editor launcher.
  */
@@ -250,13 +271,56 @@ export interface TabToComponentsOptions {
    * - `"x"`: the vertical line and the `x` pill only.
    * - `"y"`: the horizontal line and the `y` pill only.
    *
-   * The readout is the rounded viewport CSS pixel position and updates on every
-   * `mousemove`; no modifier key is needed. It needs the browser runtime
-   * (`overlay: "all" | "entry"`), and it hides itself when the pointer leaves
-   * the window, on window blur and while a picker is open.
+   * The ruler is only visible while every key in `keyboard` is held: pressing
+   * the modifier reveals it at the last pointer position, releasing it hides
+   * it. It needs the browser runtime (`overlay: "all" | "entry"`), and it also
+   * hides itself when the pointer leaves the window, on window blur and while
+   * a picker is open.
    * @default false
    */
   crosshair?: TabToComponentsCrosshairMode | boolean;
+
+  /**
+   * Unit of the coordinates shown in the crosshair ruler pills: `"px"`
+   * (default), `"cm"`, `"mm"`, `"in"` or `"rem"`. Pass an array such as
+   * `["px", "cm"]` to show several units in the same pill, in that order.
+   *
+   * Physical units use the CSS reference pixel (`1in = 96px`), so they match
+   * design tools rather than the physical screen size. `"rem"` uses the
+   * document root font size (16px unless the page changes it). Only the pills
+   * change: the lines still follow the pointer in CSS pixels.
+   * @default "px"
+   */
+  crosshairUnit?: TabToComponentsCrosshairUnitSelection;
+
+  /**
+   * CSS color of the crosshair ruler lines and the coordinate pill
+   * backgrounds, e.g. `"#ff3355"`, `"rgb(255 51 85)"` or `"tomato"`. Accepts
+   * hex, `rgb()`/`hsl()`/`hwb()`/`lab()`/`lch()`/`oklab()`/`oklch()`/
+   * `color()`, and named colors. Invalid values are ignored. When omitted, the
+   * current theme's line color and pill background are used.
+   * @default undefined (theme color)
+   */
+  crosshairLineColor?: string;
+
+  /**
+   * CSS color of the crosshair pill text, using the same formats as
+   * `crosshairLineColor`. Invalid values are ignored. When omitted, the
+   * current theme's pill text color is used.
+   * @default undefined (theme color)
+   */
+  crosshairTextColor?: string;
+
+  /**
+   * Key that drops a measurement point at the pointer while the crosshair is
+   * visible. Accepts one letter or digit, case-insensitive.
+   *
+   * Each new point is joined to the previous point only, and every segment is
+   * labelled with its length in the configured `crosshairUnit`. Releasing the
+   * `keyboard` modifier clears all points. `"z"` by default.
+   * @default "z"
+   */
+  crosshairPointKey?: string;
 
   /**
    * How the client runtime gets into the page. `all` injects a side-effect
@@ -322,6 +386,10 @@ export interface ResolvedOptions {
   menu: boolean;
   theme: TabToComponentsTheme;
   crosshair: TabToComponentsCrosshairMode | false;
+  crosshairUnit: TabToComponentsCrosshairUnit[];
+  crosshairLineColor?: string;
+  crosshairTextColor?: string;
+  crosshairPointKey: string;
   overlay: "all" | "entry" | false;
   ssr: boolean;
   include: RegExp[];
@@ -350,6 +418,14 @@ export interface ClientConfig {
   theme: TabToComponentsTheme;
   /** Omitted from the injected JSON when the crosshair is disabled. */
   crosshair?: TabToComponentsCrosshairMode;
+  /** Omitted from the injected JSON when it is the default (`["px"]`). */
+  crosshairUnit?: TabToComponentsCrosshairUnitSelection;
+  /** Omitted from the injected JSON when unset; defaults to the theme color. */
+  crosshairLineColor?: string;
+  /** Omitted from the injected JSON when unset; defaults to the theme color. */
+  crosshairTextColor?: string;
+  /** Omitted from the injected JSON when it is the default (`"z"`). */
+  crosshairPointKey?: string;
   editorEndpoint: string;
 }
 

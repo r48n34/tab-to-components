@@ -32,6 +32,10 @@ interface ClientPayload {
   menu: boolean;
   theme: string;
   crosshair?: string;
+  crosshairUnit?: string[];
+  crosshairLineColor?: string;
+  crosshairTextColor?: string;
+  crosshairPointKey?: string;
   editorEndpoint: string;
 }
 
@@ -165,6 +169,145 @@ describe("crosshair option", () => {
       "crosshair" in
         clientPayload(createPlugin({ crosshair: "diagonal" as never })),
     ).toBe(false);
+  });
+});
+
+describe("crosshairUnit option", () => {
+  it("omits the pixel default from the payload", () => {
+    expect(
+      "crosshairUnit" in clientPayload(createPlugin({ crosshair: "both" })),
+    ).toBe(false);
+  });
+
+  it("passes each unit through to the browser runtime", () => {
+    expect(
+      clientPayload(createPlugin({ crosshair: "both", crosshairUnit: "cm" }))
+        .crosshairUnit,
+    ).toEqual(["cm"]);
+    expect(
+      clientPayload(createPlugin({ crosshair: "both", crosshairUnit: "mm" }))
+        .crosshairUnit,
+    ).toEqual(["mm"]);
+    expect(
+      clientPayload(createPlugin({ crosshair: "both", crosshairUnit: "in" }))
+        .crosshairUnit,
+    ).toEqual(["in"]);
+    expect(
+      clientPayload(createPlugin({ crosshair: "both", crosshairUnit: "rem" }))
+        .crosshairUnit,
+    ).toEqual(["rem"]);
+  });
+
+  it("passes several units through in order and dedupes them", () => {
+    expect(
+      clientPayload(
+        createPlugin({ crosshair: "both", crosshairUnit: ["px", "cm"] }),
+      ).crosshairUnit,
+    ).toEqual(["px", "cm"]);
+    expect(
+      clientPayload(
+        createPlugin({
+          crosshair: "both",
+          crosshairUnit: ["cm", "px", "cm", "in"],
+        }),
+      ).crosshairUnit,
+    ).toEqual(["cm", "px", "in"]);
+  });
+
+  it("omits the key for the pixel-only list", () => {
+    expect(
+      "crosshairUnit" in
+        clientPayload(createPlugin({ crosshairUnit: ["px"] })),
+    ).toBe(false);
+  });
+
+  it("omits the key when no requested unit is known", () => {
+    expect(
+      "crosshairUnit" in
+        clientPayload(createPlugin({ crosshairUnit: "furlong" as never })),
+    ).toBe(false);
+    expect(
+      "crosshairUnit" in
+        clientPayload(createPlugin({ crosshairUnit: ["furlong"] as never })),
+    ).toBe(false);
+    expect(
+      "crosshairUnit" in clientPayload(createPlugin({ crosshairUnit: [] })),
+    ).toBe(false);
+  });
+});
+
+describe("crosshair color options", () => {
+  it("omits line and text colors by default", () => {
+    const payload = clientPayload(createPlugin({ crosshair: "both" }));
+    expect("crosshairLineColor" in payload).toBe(false);
+    expect("crosshairTextColor" in payload).toBe(false);
+  });
+
+  it("passes valid CSS colors through and trims them", () => {
+    const payload = clientPayload(
+      createPlugin({
+        crosshair: "both",
+        crosshairLineColor: " #ff3355 ",
+        crosshairTextColor: "rgb(14 16 22 / 90%)",
+      }),
+    );
+    expect(payload.crosshairLineColor).toBe("#ff3355");
+    expect(payload.crosshairTextColor).toBe("rgb(14 16 22 / 90%)");
+  });
+
+  it("accepts named and oklch colors", () => {
+    const payload = clientPayload(
+      createPlugin({
+        crosshair: "both",
+        crosshairLineColor: "tomato",
+        crosshairTextColor: "oklch(70% 0.2 20)",
+      }),
+    );
+    expect(payload.crosshairLineColor).toBe("tomato");
+    expect(payload.crosshairTextColor).toBe("oklch(70% 0.2 20)");
+  });
+
+  it("drops invalid colors instead of injecting them", () => {
+    const payload = clientPayload(
+      createPlugin({
+        crosshair: "both",
+        crosshairLineColor: "url(evil)" as never,
+        crosshairTextColor: "red; background: blue" as never,
+      }),
+    );
+    expect("crosshairLineColor" in payload).toBe(false);
+    expect("crosshairTextColor" in payload).toBe(false);
+  });
+});
+
+describe("crosshairPointKey option", () => {
+  it("omits the default Z key from the payload", () => {
+    expect(
+      "crosshairPointKey" in clientPayload(createPlugin({ crosshair: "both" })),
+    ).toBe(false);
+  });
+
+  it("passes a custom key through, trimmed and lowercased", () => {
+    expect(
+      clientPayload(
+        createPlugin({ crosshair: "both", crosshairPointKey: " P " }),
+      ).crosshairPointKey,
+    ).toBe("p");
+    expect(
+      clientPayload(createPlugin({ crosshair: "both", crosshairPointKey: "7" }))
+        .crosshairPointKey,
+    ).toBe("7");
+  });
+
+  it("omits invalid point keys because they fall back to Z", () => {
+    for (const key of ["", "ab", "!", " ", 42]) {
+      expect(
+        "crosshairPointKey" in
+          clientPayload(
+            createPlugin({ crosshair: "both", crosshairPointKey: key as never }),
+          ),
+      ).toBe(false);
+    }
   });
 });
 
