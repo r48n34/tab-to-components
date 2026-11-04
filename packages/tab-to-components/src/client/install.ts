@@ -135,7 +135,7 @@ export function install(userConfig?: Partial<ClientConfig> | null): () => void {
     ...(userConfig ?? {}),
   });
 
-  const overlay = new Overlay(document, config.theme);
+  const overlay = new Overlay(document, config.theme, config.crosshair ?? false);
   const listeners: RegisteredListener[] = [];
 
   let armed = false;
@@ -357,10 +357,13 @@ export function install(userConfig?: Partial<ClientConfig> | null): () => void {
 
   const onWindowBlur: EventListener = () => {
     disarm();
+    overlay.hideCrosshair();
   };
 
   const onMouseMove: EventListener = (rawEvent) => {
     const event = rawEvent as MouseEvent;
+    // The crosshair ruler tracks the pointer independently of the modifier.
+    if (config.crosshair) overlay.setCrosshair(event.clientX, event.clientY);
     if (!isModifierHeld(event, config.keyboard)) {
       disarm();
       return;
@@ -447,6 +450,7 @@ export function install(userConfig?: Partial<ClientConfig> | null): () => void {
       pendingTarget = null;
       cancelHover();
       overlay.hideHover();
+      overlay.hideCrosshair();
     }
   };
 

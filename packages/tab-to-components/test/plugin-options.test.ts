@@ -31,6 +31,7 @@ interface ClientPayload {
   }>;
   menu: boolean;
   theme: string;
+  crosshair?: string;
   editorEndpoint: string;
 }
 
@@ -134,6 +135,36 @@ describe("theme option", () => {
     expect(
       clientPayload(createPlugin({ theme: "solarized" as never })).theme,
     ).toBe("dark");
+  });
+});
+
+describe("crosshair option", () => {
+  it("keeps the key out of the payload by default", () => {
+    expect("crosshair" in clientPayload(createPlugin())).toBe(false);
+  });
+
+  it("passes each axis through to the browser runtime", () => {
+    expect(clientPayload(createPlugin({ crosshair: "both" })).crosshair).toBe(
+      "both",
+    );
+    expect(clientPayload(createPlugin({ crosshair: "x" })).crosshair).toBe("x");
+    expect(clientPayload(createPlugin({ crosshair: "y" })).crosshair).toBe("y");
+  });
+
+  it("resolves crosshair: true to both axes", () => {
+    expect(clientPayload(createPlugin({ crosshair: true })).crosshair).toBe(
+      "both",
+    );
+  });
+
+  it("omits the key for false and unknown values", () => {
+    expect("crosshair" in clientPayload(createPlugin({ crosshair: false }))).toBe(
+      false,
+    );
+    expect(
+      "crosshair" in
+        clientPayload(createPlugin({ crosshair: "diagonal" as never })),
+    ).toBe(false);
   });
 });
 

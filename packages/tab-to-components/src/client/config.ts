@@ -23,6 +23,13 @@ export type OpenMode = "component" | "element" | "menu";
  */
 export type ThemeMode = "dark" | "light";
 
+/**
+ * Cursor crosshair ruler setting. `false` draws nothing; `"both"` draws the
+ * vertical x line and the horizontal y line, `"x"` only the vertical line and
+ * `"y"` only the horizontal one. Coordinates are viewport CSS pixels.
+ */
+export type CrosshairMode = "both" | "x" | "y" | false;
+
 /** IDE a per-IDE open action launches on the dev-server machine. */
 export type EditorIde = "code" | "cursor" | "webstorm" | "trae";
 
@@ -135,6 +142,11 @@ export interface ClientConfig {
   menu: boolean;
   /** Color theme of the overlay. Default "dark". */
   theme: ThemeMode;
+  /**
+   * Cursor crosshair ruler. Omitted from the injected config when disabled.
+   * Default `false`.
+   */
+  crosshair?: CrosshairMode;
   /** Endpoint path relative to `base`. Default "__open-in-editor". */
   editorEndpoint: string;
 }
@@ -150,12 +162,14 @@ export const DEFAULT_CONFIG: ClientConfig = {
   customActions: [],
   menu: true,
   theme: "dark",
+  crosshair: false,
   editorEndpoint: "__open-in-editor",
 };
 
 const MODIFIER_KEYS: readonly ModifierKey[] = ["alt", "ctrl", "meta", "shift"];
 const OPEN_MODES: readonly OpenMode[] = ["component", "element", "menu"];
 const THEMES: readonly ThemeMode[] = ["dark", "light"];
+const CROSSHAIRS: readonly CrosshairMode[] = ["both", "x", "y"];
 const CLICK_ACTIONS: readonly ClickAction[] = [
   "open",
   "open-code",
@@ -252,6 +266,19 @@ function normalizeTheme(theme: unknown): ThemeMode {
     : DEFAULT_CONFIG.theme;
 }
 
+/**
+ * Normalize the crosshair setting. Accepts `true` as an alias for `"both"`
+ * (the plugin resolves it before injection, but `install()` and a tampered
+ * config can still hand us a raw value).
+ */
+function normalizeCrosshair(crosshair: unknown): CrosshairMode {
+  if (crosshair === true) return "both";
+  return typeof crosshair === "string" &&
+    CROSSHAIRS.includes(crosshair as CrosshairMode)
+    ? (crosshair as CrosshairMode)
+    : false;
+}
+
 function normalizeClickActions(
   actions: readonly unknown[] | string | undefined,
 ): ClickAction[] {
@@ -292,6 +319,7 @@ export function resolveConfig(input?: Partial<ClientConfig> | null): ClientConfi
     customActions: normalizeCustomActions(source.customActions),
     menu: source.menu === undefined ? DEFAULT_CONFIG.menu : Boolean(source.menu),
     theme: normalizeTheme(source.theme),
+    crosshair: normalizeCrosshair(source.crosshair),
     editorEndpoint: normalizeEndpoint(source.editorEndpoint),
   };
 }

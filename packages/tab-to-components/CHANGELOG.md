@@ -15,6 +15,18 @@ This project follows [Semantic Versioning](https://semver.org/).
 - The toolbar popup no longer shows its dismissible **Tip** box; the same guidance (hover preview, left-click picker, modifier + right-click chain, loopback-only) now lives in the options page's **Quick start** guide.
 - Tests: new `test/plugin-editor.test.ts`, `test/plugin-config.test.ts` and `test/ui/icons.test.ts`, protocol coverage for the editor messages and plugin options, and install tests for hiding the action (18 files, 227 tests).
 
+## 0.6.0 - 2026-11-04
+
+Feature release: the optional pointer **crosshair ruler**. Defaults, existing options and output formats are unchanged; `crosshair` is additive and off by default.
+
+### Crosshair ruler
+
+- New **`crosshair`** option (`false` by default): draws an axis ruler that follows the pointer, with a vertical line and a top pill showing the viewport `x`, and a horizontal line with a left pill showing the `y`. Values are `false`, `"both"`, `"x"`, `"y"`, and `true` as an alias for `"both"`.
+- The ruler lives inside the existing `[data-ttc-ui]` shadow root, uses the light/dark palette tokens (`--ttc-crosshair-line`, `--ttc-crosshair-tag-bg`, `--ttc-crosshair-tag-text`) and is exposed as `data-ttc-crosshair="<mode>"` on the host when enabled. It stays `pointer-events: none`, so it never intercepts the app.
+- It hides while a picker is open, when the pointer leaves the window, and on window blur, and it works without holding the modifier key. When disabled, no extra DOM is created, so the injected client prelude stays byte-identical for apps that do not opt in.
+- Adds `TabToComponentsCrosshairMode` (`"both" | "x" | "y"`) to the public types and `CrosshairMode` to the browser config exports.
+- Tests: new `test/client/crosshair.test.ts` (10 tests) plus `crosshair` coverage in `test/client/config.test.ts` and `test/plugin-options.test.ts`; the unit suite is 22 files / 506 tests.
+
 ## 0.5.0 - 2026-10-28
 
 Feature release: icon-led overlay menus, extensible click actions with AI/share presets, a wider verified compatibility matrix, and a companion Chrome extension in the monorepo. Defaults, existing options and output formats are unchanged; the new `customActions` option and eight new `clickActions` values are additive.

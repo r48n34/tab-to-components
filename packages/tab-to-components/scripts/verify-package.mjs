@@ -177,15 +177,16 @@ check("publishes no source maps", publishedMaps.length === 0, publishedMaps.join
 // icons and the expanded docs (~150 KiB); the per-IDE click actions, their icons
 // and the matching docs took it to ~164 KiB; the extensible custom actions, the
 // AI/share presets and their documentation take it to ~180 KiB, and the Vite 5
-// support documentation to ~185 KiB. The budget tracks the current release line
-// rather than the original 112 KiB.
-check("published payload is small", publishedBytes <= 192 * 1024, `${(publishedBytes / 1024).toFixed(1)} KiB`);
+// support documentation to ~185 KiB. The 0.6.0 crosshair ruler and its docs take
+// it to ~196 KiB. The budget tracks the current release line rather than the
+// original 112 KiB.
+check("published payload is small", publishedBytes <= 200 * 1024, `${(publishedBytes / 1024).toFixed(1)} KiB`);
 // The browser runtime is minified by scripts/build.mjs; keep it that way so the
 // tarball does not silently double in size again. The 0.5.0 icons took it to
 // ~24.1 KiB; the per-IDE click actions and their four icons took it to ~25.3 KiB;
 // the AI/share presets, the custom-template engine and three more icons take it
-// to ~29.0 KiB.
-check("client runtime is minified", clientBytes > 0 && clientBytes <= 30 * 1024, `${clientBytes} bytes`);
+// to ~29.0 KiB; the 0.6.0 crosshair ruler takes it to ~31.6 KiB.
+check("client runtime is minified", clientBytes > 0 && clientBytes <= 34 * 1024, `${clientBytes} bytes`);
 for (const leaked of ["src/index.ts", "test/plugin.test.ts", "scripts/build.mjs"]) {
   check(`does not publish ${leaked}`, !publishedFiles.includes(leaked));
 }

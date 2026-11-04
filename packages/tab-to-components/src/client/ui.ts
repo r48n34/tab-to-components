@@ -8,7 +8,7 @@
  * has `pointer-events: none`; only the menu re-enables pointer events.
  */
 
-import type { ThemeMode } from "./config";
+import type { CrosshairMode, ThemeMode } from "./config";
 import { createMenuIcon, type MenuIconName } from "./icons";
 import { formatNameLabel } from "./marker";
 
@@ -16,6 +16,11 @@ import { formatNameLabel } from "./marker";
 export const UI_ATTRIBUTE = "data-ttc-ui";
 /** Attribute on the host element carrying the overlay theme: `dark` or `light`. */
 export const THEME_ATTRIBUTE = "data-ttc-theme";
+/**
+ * Attribute on the host element exposing the crosshair setting (`both`, `x`,
+ * `y`) when the ruler is enabled. Absent when it is off.
+ */
+export const CROSSHAIR_ATTRIBUTE = "data-ttc-crosshair";
 /** Highest practical z-index (2^31 - 1). */
 export const UI_Z_INDEX = "2147483647";
 
@@ -47,6 +52,9 @@ const STYLE_TEXT = `
   --ttc-shadow-toast: rgba(0, 0, 0, 0.5);
   --ttc-error-border: rgba(255, 120, 120, 0.55);
   --ttc-error-text: #ffd7d7;
+  --ttc-crosshair-line: rgba(231, 233, 240, 0.55);
+  --ttc-crosshair-tag-bg: #e7e9f0;
+  --ttc-crosshair-tag-text: #0e1016;
   --ttc-color-scheme: dark;
 }
 :host([data-ttc-theme="light"]) {
@@ -67,6 +75,9 @@ const STYLE_TEXT = `
   --ttc-shadow-toast: rgba(15, 23, 42, 0.16);
   --ttc-error-border: rgba(190, 35, 35, 0.45);
   --ttc-error-text: #b42318;
+  --ttc-crosshair-line: rgba(27, 33, 48, 0.35);
+  --ttc-crosshair-tag-bg: #1b2130;
+  --ttc-crosshair-tag-text: #f7f8fb;
   --ttc-color-scheme: light;
 }
 .ttc-outline {
@@ -197,6 +208,53 @@ const STYLE_TEXT = `
   border-color: var(--ttc-error-border);
   color: var(--ttc-error-text);
 }
+/* Cursor crosshair ruler: one vertical and one horizontal 1px line plus a
+   coordinate pill at the top and on the left. It sits below the outline and
+   labels (z-index 1) and never receives pointer events. */
+.ttc-crosshair {
+  position: fixed;
+  inset: 0;
+  display: none;
+  pointer-events: none;
+  z-index: 1;
+}
+.ttc-crosshair-v {
+  position: fixed;
+  top: 0;
+  width: 1px;
+  height: 100%;
+  background: var(--ttc-crosshair-line);
+}
+.ttc-crosshair-h {
+  position: fixed;
+  left: 0;
+  height: 1px;
+  width: 100%;
+  background: var(--ttc-crosshair-line);
+}
+.ttc-crosshair-tag {
+  position: fixed;
+  box-sizing: border-box;
+  min-width: 44px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--ttc-crosshair-tag-bg);
+  color: var(--ttc-crosshair-tag-text);
+  font: 11px/1.35 ${FONT_STACK};
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px var(--ttc-shadow-label);
+  pointer-events: none;
+}
+.ttc-crosshair-tag-x {
+  top: 4px;
+  transform: translateX(-50%);
+}
+.ttc-crosshair-tag-y {
+  left: 4px;
+  transform: translateY(-50%);
+}
 `;
 
 /** What the hover label needs on each animation frame. */
@@ -246,6 +304,22 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
 
+/** Nodes created only when the crosshair ruler is enabled. */
+interface CrosshairNodes {
+  box: HTMLDivElement;
+  vertical: HTMLDivElement;
+  horizontal: HTMLDivElement;
+  tagX: HTMLDivElement;
+  tagY: HTMLDivElement;
+}
+
+/** Half of the pill's fixed 44px width, for edge clamping. */
+const TAG_HALF_WIDTH = 22;
+/** Half of the pill's 20px line box, for edge clamping. */
+const TAG_HALF_HEIGHT = 10;
+/** Gap kept between a pill and the viewport edge. */
+const TAG_EDGE = 4;
+
 /**
  * Owns every overlay node. Create once per `install()` and `destroy()` it on
  * uninstall.
@@ -263,8 +337,15 @@ export class Overlay {
   private menuIndex = 0;
   private menuIsOpen = false;
   private destroyed = false;
+  private readonly doc: Document;
+  private crosshairNodes: CrosshairNodes | null = null;
 
-  constructor(doc: Document, theme: ThemeMode = "dark") {
+  constructor(
+    doc: Document,
+    theme: ThemeMode = "dark",
+    crosshair: CrosshairMode = false,
+  ) {
+    this.doc = doc;
     this.host = doc.createElement("div");
     this.host.setAttribute(UI_ATTRIBUTE, "");
     this.host.setAttribute(THEME_ATTRIBUTE, theme);
@@ -317,6 +398,34 @@ export class Overlay {
     this.toast.setAttribute("role", "status");
     this.toast.setAttribute("aria-live", "polite");
     shadow.append(this.toast);
+
+    if (crosshair !== false) {
+      const box = doc.createElement("div");
+      box.className = "ttc-crosshair";
+      box.setAttribute("aria-hidden", "true");
+      const vertical = doc.createElement("div");
+      vertical.className = "ttc-crosshair-v";
+      const horizontal = doc.createElement("div");
+      horizontal.className = "ttc-crosshair-h";
+      const tagX = doc.createElement("div");
+      tagX.className = "ttc-crosshair-tag ttc-crosshair-tag-x";
+      const tagY = doc.createElement("div");
+      tagY.className = "ttc-crosshair-tag ttc-crosshair-tag-y";
+      box.append(vertical, horizontal, tagX, tagY);
+      shadow.append(box);
+      this.host.setAttribute(CROSSHAIR_ATTRIBUTE, crosshair);
+
+      // Single-axis modes keep the unused line and pill in the DOM, hidden.
+      if (crosshair === "x") {
+        this.hide(horizontal);
+        this.hide(tagY);
+      } else if (crosshair === "y") {
+        this.hide(vertical);
+        this.hide(tagX);
+      }
+
+      this.crosshairNodes = { box, vertical, horizontal, tagX, tagY };
+    }
 
     const parent = doc.body ?? doc.documentElement;
     parent?.append(this.host);
@@ -386,6 +495,44 @@ export class Overlay {
     this.hide(this.label);
   }
 
+  /**
+   * Move the crosshair ruler to viewport coordinates (x, y). Positions are
+   * rounded to whole CSS pixels and the pills clamp to the viewport edges.
+   */
+  setCrosshair(x: number, y: number): void {
+    const nodes = this.crosshairNodes;
+    if (this.destroyed || nodes === null || this.menuIsOpen) return;
+
+    const view = this.doc.defaultView;
+    const width = view?.innerWidth ?? 0;
+    const height = view?.innerHeight ?? 0;
+    const left = Math.round(x);
+    const top = Math.round(y);
+
+    this.show(nodes.box);
+    nodes.vertical.style.left = `${left}px`;
+    nodes.horizontal.style.top = `${top}px`;
+
+    nodes.tagX.textContent = String(left);
+    nodes.tagX.style.left = `${clamp(
+      left,
+      TAG_HALF_WIDTH + TAG_EDGE,
+      width - TAG_HALF_WIDTH - TAG_EDGE,
+    )}px`;
+    nodes.tagY.textContent = String(top);
+    nodes.tagY.style.top = `${clamp(
+      top,
+      TAG_HALF_HEIGHT + TAG_EDGE,
+      height - TAG_HALF_HEIGHT - TAG_EDGE,
+    )}px`;
+  }
+
+  /** Hide the crosshair ruler; the next pointer move shows it again. */
+  hideCrosshair(): void {
+    if (this.crosshairNodes === null) return;
+    this.hide(this.crosshairNodes.box);
+  }
+
   /** Show a transient message near the bottom center of the viewport. */
   showToast(message: string, options: ToastOptions = {}): void {
     if (this.destroyed) return;
@@ -430,6 +577,7 @@ export class Overlay {
     if (this.destroyed || items.length === 0) return;
 
     this.hideHover();
+    this.hideCrosshair();
     this.menuItems = [...items];
     this.menuIndex = 0;
     this.menu.textContent = "";
@@ -591,6 +739,7 @@ export class Overlay {
     if (this.destroyed) return;
     this.closeMenu();
     this.hideHover();
+    this.hideCrosshair();
     this.hideToast();
     this.destroyed = true;
     this.host.remove();

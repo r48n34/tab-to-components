@@ -6,5 +6,6 @@ export default defineConfig({
   plugins: [tabToComponents({
     clickActions: ["open", "copy-file", "copy-path", "copy-location", "copy-full-path"],
     theme: "light", // default: "dark"
+    crosshair: "both", // default: false; "both", "x" or "y"
   }), reactRouter()],
 });

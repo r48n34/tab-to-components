@@ -141,6 +141,7 @@ Remix v2 supports Vite 5/6 and React 18. Remix v1 uses its classic esbuild compi
 | Action | Result |
 | --- | --- |
 | Hold <kbd>Alt</kbd> + move the mouse | The element under the cursor is outlined; a label shows `<Component />` and `file:line:column`. |
+| Move the mouse (with `crosshair` on) | An optional ruler follows the pointer: a vertical line with the viewport `x` pill at the top and a horizontal line with the `y` pill on the left. See [Crosshair](#crosshair). |
 | <kbd>Alt</kbd> + left click | Opens the **source action picker** for the nearest component usage site (e.g. the `<Button />` line in your page): **Open in IDE**, **Copy file name** (`MyBox.tsx`), **Copy full path** (`D:/proj/app/components/MyBox.tsx`), or open directly in a specific IDE — VS Code, Cursor, WebStorm or Trae. Optional `copy-ai-context`, `copy-mention`, `copy-markdown` and `copy-chain` rows cover AI tools and chat, and `customActions` adds team-defined copy rows. Falls back to the clicked element when it was rendered directly. |
 | <kbd>Alt</kbd> + right click | Opens the **component chain picker** listing every marked JSX ancestor (`<button />`, `<Button />`, `<Card />`, …). Click a row, or use <kbd>↑</kbd>/<kbd>↓</kbd>/<kbd>Enter</kbd>, <kbd>Esc</kbd> to close. |
 | After an action | A short toast confirms the file that was opened or the text that was copied. |
@@ -149,7 +150,7 @@ Each picker row starts with a small icon for what it acts on — an external lin
 
 Configuring a **single** row and no custom actions skips the picker and runs it immediately — `clickActions: ["open"]` keeps the pre-0.4 instant-open behavior (see [Copy source paths](#copy-source-paths)). A per-IDE row works the same way: `clickActions: ["open-cursor"]` opens Cursor immediately.
 
-The app's own click handler is **not** triggered (the plugin suppresses it in the capture phase), and no overlay DOM is added except one `<div data-ttc-ui>` shadow root with `pointer-events: none`. The overlay is **dark by default**; set `theme: "light"` to match a light app (see [Theme](#theme)).
+The app's own click handler is **not** triggered (the plugin suppresses it in the capture phase), and no overlay DOM is added except one `<div data-ttc-ui>` shadow root with `pointer-events: none` — the same shadow root also holds the optional crosshair ruler. The overlay is **dark by default**; set `theme: "light"` to match a light app (see [Theme](#theme)).
 
 ![Alt+right-click opens the component chain picker, listing each marked JSX ancestor and its source file](https://github.com/r48n34/tab-to-components/raw/main/docs/demo-menu.png)
 
@@ -272,6 +273,20 @@ The choice is rendered as a `data-ttc-theme` attribute on the `[data-ttc-ui]` ho
 
 ---
 
+## Crosshair
+
+Enable the optional **crosshair ruler** to read the pointer's viewport position while you match a design. When it is on, a thin vertical line follows the cursor with a pill at the top showing its `x`, and a thin horizontal line follows with a pill on the left showing its `y`. The readout is rounded CSS pixels, and it runs alongside the modifier-key inspector — no key has to be held.
+
+```ts
+tabToComponents({
+  crosshair: "both", // default: false; "both", "x" or "y"
+});
+```
+
+`"x"` draws only the vertical line and its top pill, `"y"` only the horizontal line and its left pill, and `true` is a shortcut for `"both"`. The lines and pills use the same `data-ttc-theme` palette as the rest of the overlay, so `theme: "light"` renders dark ink on light pills. The ruler hides while a picker is open, when the pointer leaves the window, and when the window loses focus; it only needs the browser runtime, so it is inert with `overlay: false`.
+
+---
+
 ## Options
 
 ```ts
@@ -282,6 +297,7 @@ tabToComponents({
   // customActions: [{ id: "review", label: "Copy review prompt", copy: "{location}" }],
   menu: true,
   theme: "dark",               // "dark" (default) or "light"
+  crosshair: false,            // false (default), "both", "x" or "y"
   overlay: "all",
   ssr: true,
   editor: "code",              // default: VS Code; "cursor", "trae", { command, args }, fn
@@ -300,6 +316,7 @@ tabToComponents({
 | `customActions` | `[]` | Extra **copy-only** rows appended after `clickActions`, each with an `id`, `label`, `copy` template and optional `icon`. Templates support `{file}`, `{absPath}`, `{name}`, `{line}`, `{column}`, `{location}` and `{chain}`. See [Custom copy actions](#custom-copy-actions). |
 | `menu` | `true` | Enable the modifier + right-click chain picker. |
 | `theme` | `"dark"` | Color theme of the overlay: `"dark"` (the original blue-on-black UI) or `"light"` (white surfaces with darker blue accents for contrast). See [Theme](#theme). |
+| `crosshair` | `false` | Optional ruler that follows the pointer and shows the viewport `x`/`y` in pills: `false`, `"both"`, `"x"` or `"y"`. `true` is an alias for `"both"`. Needs the browser runtime (`overlay: "all"` or `"entry"`). See [Crosshair](#crosshair). |
 | `overlay` | `"all"` | `"all"` injects the browser runtime through client modules (works in every framework, including React Router's streamed SSR). `"entry"` only injects it into `entry.client.*` modules. `false` disables the runtime (markers only). |
 | `ssr` | `true` | Also annotate server-rendered markup, keeping server and client props identical during hydration. Set `false` if you snapshot SSR HTML. |
 | `include` / `exclude` | — | RegExp or RegExp[] matched against project-relative paths. `node_modules`, `dist`, `build`, `.react-router` and `public` are always excluded. |

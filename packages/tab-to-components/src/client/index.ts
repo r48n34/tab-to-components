@@ -31,6 +31,7 @@ export { copyText } from "./clipboard";
 export type {
   ClickAction,
   ClientConfig,
+  CrosshairMode,
   CustomAction,
   CustomActionIcon,
   EditorIde,

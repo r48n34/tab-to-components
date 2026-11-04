@@ -30,6 +30,7 @@ import {
   type EditorOption,
   type InspectorKey,
   type TabToComponentsClickAction,
+  type TabToComponentsCrosshairMode,
   type TabToComponentsOpenMode,
   type TabToComponentsTheme,
   type ResolvedOptions,
@@ -42,6 +43,7 @@ const VALID_OPEN_MODES: TabToComponentsOpenMode[] = [
   "menu",
 ];
 const VALID_THEMES: TabToComponentsTheme[] = ["dark", "light"];
+const VALID_CROSSHAIRS: TabToComponentsCrosshairMode[] = ["both", "x", "y"];
 const VALID_CLICK_ACTIONS: TabToComponentsClickAction[] = [
   "open",
   "open-code",
@@ -156,6 +158,14 @@ function resolveOptions(options: TabToComponentsOptions): ResolvedOptions {
     theme: VALID_THEMES.includes(options.theme as TabToComponentsTheme)
       ? (options.theme as TabToComponentsTheme)
       : "dark",
+    crosshair:
+      options.crosshair === true
+        ? "both"
+        : VALID_CROSSHAIRS.includes(
+              options.crosshair as TabToComponentsCrosshairMode,
+            )
+          ? (options.crosshair as TabToComponentsCrosshairMode)
+          : false,
     overlay: options.overlay ?? "all",
     ssr: options.ssr !== false,
     include,
@@ -363,6 +373,11 @@ export function tabToComponents(
     // config falls back to an empty list.
     if (resolved.customActions.length > 0) {
       config.customActions = resolved.customActions;
+    }
+    // Same rule as `customActions`: keep the injected prelude byte-identical
+    // (and the crosshair off) when the option is not configured.
+    if (resolved.crosshair !== false) {
+      config.crosshair = resolved.crosshair;
     }
     return config;
   }

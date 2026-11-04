@@ -133,6 +133,18 @@ export interface TabToComponentsCustomAction {
 export type TabToComponentsTheme = "dark" | "light";
 
 /**
+ * How much of the cursor crosshair ruler the overlay draws.
+ *
+ * - `both`: the vertical line at the cursor x and the horizontal line at the
+ *   cursor y, each with its viewport coordinate.
+ * - `x`: only the vertical line, with the x coordinate at the top.
+ * - `y`: only the horizontal line, with the y coordinate on the left.
+ *
+ * Coordinates are rounded viewport CSS pixels.
+ */
+export type TabToComponentsCrosshairMode = "both" | "x" | "y";
+
+/**
  * A source location the dev server should open in the editor.
  * Emitted by the browser runtime, consumed by the editor launcher.
  */
@@ -228,6 +240,25 @@ export interface TabToComponentsOptions {
   theme?: TabToComponentsTheme;
 
   /**
+   * Draw a crosshair ruler that follows the pointer: a 1px vertical line with
+   * the cursor `x` pill at the top, and a 1px horizontal line with the cursor
+   * `y` pill on the left.
+   *
+   * - `false` (default): no ruler.
+   * - `true`: same as `"both"`.
+   * - `"both"`: both lines and both pills.
+   * - `"x"`: the vertical line and the `x` pill only.
+   * - `"y"`: the horizontal line and the `y` pill only.
+   *
+   * The readout is the rounded viewport CSS pixel position and updates on every
+   * `mousemove`; no modifier key is needed. It needs the browser runtime
+   * (`overlay: "all" | "entry"`), and it hides itself when the pointer leaves
+   * the window, on window blur and while a picker is open.
+   * @default false
+   */
+  crosshair?: TabToComponentsCrosshairMode | boolean;
+
+  /**
    * How the client runtime gets into the page. `all` injects a side-effect
    * import into every client module, which works for every framework
    * (including React Router framework mode, which never calls
@@ -290,6 +321,7 @@ export interface ResolvedOptions {
   customActions: TabToComponentsCustomAction[];
   menu: boolean;
   theme: TabToComponentsTheme;
+  crosshair: TabToComponentsCrosshairMode | false;
   overlay: "all" | "entry" | false;
   ssr: boolean;
   include: RegExp[];
@@ -316,6 +348,8 @@ export interface ClientConfig {
   customActions?: TabToComponentsCustomAction[];
   menu: boolean;
   theme: TabToComponentsTheme;
+  /** Omitted from the injected JSON when the crosshair is disabled. */
+  crosshair?: TabToComponentsCrosshairMode;
   editorEndpoint: string;
 }
 

@@ -31,6 +31,7 @@ export {
   type InspectorKey,
   type TabToComponentsActionIcon,
   type TabToComponentsClickAction,
+  type TabToComponentsCrosshairMode,
   type TabToComponentsCustomAction,
   type TabToComponentsCustomActionPlaceholder,
   type TabToComponentsOpenMode,

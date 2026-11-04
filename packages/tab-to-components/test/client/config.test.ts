@@ -60,6 +60,20 @@ describe("resolveConfig", () => {
     expect(resolveConfig({ theme: "solarized" as never }).theme).toBe("dark");
   });
 
+  it("defaults the crosshair ruler to off and accepts each axis", () => {
+    expect(DEFAULT_CONFIG.crosshair).toBe(false);
+    expect(resolveConfig().crosshair).toBe(false);
+    expect(resolveConfig({ crosshair: "both" }).crosshair).toBe("both");
+    expect(resolveConfig({ crosshair: "x" }).crosshair).toBe("x");
+    expect(resolveConfig({ crosshair: "y" }).crosshair).toBe("y");
+  });
+
+  it("treats crosshair: true as both axes and rejects unknown modes", () => {
+    expect(resolveConfig({ crosshair: true } as never).crosshair).toBe("both");
+    expect(resolveConfig({ crosshair: "diagonal" } as never).crosshair).toBe(false);
+    expect(resolveConfig({ crosshair: 1 } as never).crosshair).toBe(false);
+  });
+
   it("defaults the click action picker to open, file name and full path", () => {
     expect(DEFAULT_CONFIG.clickActions).toEqual([
       "open",
