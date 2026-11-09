@@ -3,13 +3,15 @@
 Rendered from the recorded JSON report of a real `node scripts/compat-matrix.mjs` run on 2026-10-25.
 
 The run was recorded on the `0.4.1` release tree, before the `0.5.0` version bump, so the environment line
-keeps the version the run actually reported. It is the **`0.5.0` ship baseline**: the report was not re-run
-for the version bump, and the only compatibility-matrix change made after it was recorded is the additive
-Vite 5 peer range (`vite`: `^5.0.0 || ^6.0.0 || ^7.0.0 || ^8.0.0`). Vite 5 (React 18 and 19) and Vite 7
+keeps the version the run actually reported. It remains the **`0.5.0` ship baseline and the `0.6.0` baseline**:
+the report was not re-run for either bump, and the compatibility-matrix-relevant code (`src/transform.ts`,
+`src/paths.ts`, `src/editor.ts`) is unchanged since `v0.5.0`. The matrix changes made after the run are
+additive: the Vite 5 peer range (`vite`: `^5.0.0 || ^6.0.0 || ^7.0.0 || ^8.0.0`), while `0.6.0` adds only
+the optional browser-side crosshair and client/config code. Vite 5 (React 18 and 19) and Vite 7
 (React 19) coverage is exercised by `pnpm test:matrix`, not by this table (see Notes).
 
 Environment: Node v24.21.0, pnpm 11.28.5, win32 x64, package `tab-to-components@0.4.1` (the version the
-recorded run reported; the `0.5.0` bump landed after it).
+recorded run reported; both the `0.5.0` and `0.6.0` bumps landed after it).
 
 Run provenance: `node scripts/compat-matrix.mjs` with the version/dev-server/runtime/build tiers only (no `--browser`). The headless-Chrome tier cannot launch in this environment, so every Browser cell is ⏭ skipped — a skipped check is not a pass. Result: 20 cells (10 frameworks × 2 React majors) — 13 tested (12 works, 1 works-not-verified), 3 upstream-unsupported, 4 not applicable, 0 failing.
 

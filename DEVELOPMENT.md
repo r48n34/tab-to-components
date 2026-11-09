@@ -53,23 +53,27 @@ Remix, Vite, or the fixture dependencies.
 
 ## Releasing
 
-The first publish of this release line is **manual**: there is no
-`.github/workflows/release.yml` in the repo yet (only `ci.yml`), and the
-tag-driven publishing automation only becomes usable after the first tagged
-publish and once a trusted publisher is configured on npm. The local,
-gitignored `PUBLISHING.md` is the step-by-step runbook for it.
-
-Every publish must still be traceable to a commit:
+Publishing is **manual**: the repo has only `.github/workflows/ci.yml`, so CI
+verifies pushes but does not publish. Every publish must still be traceable to a
+commit:
 
 1. Bump `version` in `packages/tab-to-components/package.json` and
    `src/version.ts` together (a unit test asserts they match) and add the
-   changelog entry.
-2. Commit, then tag the commit: `git tag -a v0.5.0 -m "v0.5.0"`.
-3. Push the commit and the tag. CI runs `pnpm gate`; publish from that tagged
-   commit (manually for the first release). After the first tagged publish and
-   once a trusted publisher is configured on npm, add the tag-driven
-   `release.yml` workflow described in `PUBLISHING.md`, which builds, verifies
-   and publishes with npm provenance.
+   changelog entry, dated with the release day.
+2. Commit the release, then tag that exact commit:
+   `git tag -a v0.6.0 -m "v0.6.0"`.
+3. Push the commit and the tag, wait for `pnpm gate` on CI, then publish from the
+   tagged commit with `pnpm --filter tab-to-components publish` (or
+   `npm publish` inside `packages/tab-to-components`). `prepublishOnly` builds
+   the package and the guard verifies the clean tree and the tag.
+
+If tag-driven publishing with npm provenance is added later, document that
+workflow here rather than relying on a local, gitignored runbook.
+
+Local example apps live under the gitignored `examples/` directory. Installing
+them can add or change their importers in `pnpm-lock.yaml`; restore the tracked
+lockfile (`git checkout -- pnpm-lock.yaml`) before tagging a release so the
+guard sees a clean tree.
 
 `prepublishOnly` runs `scripts/prepublish-guard.mjs` (then
 `scripts/build.mjs`), and the guard refuses a dirty working tree or a HEAD that

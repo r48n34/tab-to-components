@@ -67,8 +67,8 @@ const tagsAtHead = git(["tag", "--points-at", "HEAD"])
 if (!tagsAtHead.includes(tag)) {
   fail(
     `HEAD is not tagged ${tag} (tags here: ${tagsAtHead.join(", ") || "none"}).\n` +
-      `Tag the release commit with \`git tag -a ${tag} -m "${tag}"\` and push the tag; ` +
-      "the release workflow publishes on tag pushes.",
+      `Tag the release commit with \`git tag -a ${tag} -m "${tag}"\` and push the tag, ` +
+      "then publish manually from that tagged commit (see DEVELOPMENT.md).",
   );
 }
 

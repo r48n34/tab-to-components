@@ -655,6 +655,11 @@ export class Overlay {
 
     const point: CrosshairPoint = { x: Math.round(x), y: Math.round(y) };
     const previous = this.crosshairPoints[this.crosshairPoints.length - 1];
+    // A second press without moving would otherwise draw a zero-length
+    // segment and a "0px" label, so it is simply ignored.
+    if (previous !== undefined && previous.x === point.x && previous.y === point.y) {
+      return;
+    }
     this.crosshairPoints.push(point);
 
     if (previous !== undefined) {
@@ -801,7 +806,7 @@ export class Overlay {
     else this.menu.removeAttribute("aria-label");
 
     this.menuItems.forEach((item, index) => {
-      const row = document.createElement("button");
+      const row = this.doc.createElement("button");
       row.type = "button";
       row.className = "ttc-menu-item";
       row.setAttribute("role", "menuitem");
@@ -810,21 +815,21 @@ export class Overlay {
       // The icon is decorative and has no text content, so it does not change
       // the row's `textContent` contract (`Open in IDE  file:line:column`).
       if (item.icon !== undefined) {
-        row.append(createMenuIcon(document, item.icon));
+        row.append(createMenuIcon(this.doc, item.icon));
       }
 
-      const label = document.createElement("span");
+      const label = this.doc.createElement("span");
       label.className = "ttc-menu-name";
       label.textContent = item.label;
 
-      const detail = document.createElement("span");
+      const detail = this.doc.createElement("span");
       detail.className = "ttc-menu-source";
       detail.textContent = item.detail;
 
       // Whitespace-only flex children are ignored visually but keep
       // textContent equal to `<Name />  file:line:column` (chain) or
       // `Open in IDE  file:line:column` (actions).
-      row.append(label, document.createTextNode("  "), detail);
+      row.append(label, this.doc.createTextNode("  "), detail);
       row.addEventListener("mouseenter", () => this.setMenuIndex(index));
       // Keep the app from seeing menu interactions, but let the click through
       // to the row listener below.

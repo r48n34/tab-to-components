@@ -514,6 +514,10 @@ export function install(userConfig?: Partial<ClientConfig> | null): () => void {
 
   const onScroll: EventListener = () => {
     if (overlay.isMenuOpen) overlay.closeMenu();
+    if (config.crosshair) {
+      overlay.clearCrosshairPoints();
+      overlay.hideCrosshair();
+    }
     pendingTarget = null;
     cancelHover();
     overlay.hideHover();

@@ -3,14 +3,24 @@
 All notable changes to `tab-to-components` are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 0.6.0 - 2026-11-09
+
+Feature release: the optional pointer **crosshair ruler**. Defaults, existing options and output formats are unchanged; `crosshair` is additive and off by default.
+
+### Crosshair ruler
+
+- New **`crosshair`** option (`false` by default): draws an axis ruler that follows the pointer while the configured `keyboard` modifier is held, with a vertical line and a top pill showing the viewport `x`, and a horizontal line with a left pill showing the `y`. Values are `false`, `"both"`, `"x"`, `"y"`, and `true` as an alias for `"both"`.
+- The ruler lives inside the existing `[data-ttc-ui]` shadow root, uses the light/dark palette tokens (`--ttc-crosshair-line`, `--ttc-crosshair-tag-bg`, `--ttc-crosshair-tag-text`) and is exposed as `data-ttc-crosshair="<mode>"` on the host when enabled. It stays `pointer-events: none`, so it never intercepts the app.
+- It hides while a picker is open, when the pointer leaves the window, when the page scrolls, and on window blur. The ruler is visible only while the configured `keyboard` modifier is held, so it never covers the app while you are not inspecting. When disabled, no extra DOM is created, so the injected client prelude stays byte-identical for apps that do not opt in.
+- Adds `TabToComponentsCrosshairMode` (`"both" | "x" | "y"`) to the public types and `CrosshairMode` to the browser config exports.
+- Tests: new `test/client/crosshair.test.ts` (28 tests) plus `crosshair` coverage in `test/client/config.test.ts` and `test/plugin-options.test.ts`; the unit suite is 22 files / 544 tests.
 
 ### Crosshair units, colors, points and modifier visibility
 
 - New **`crosshairUnit`** option (`"px"` by default): choose the unit of the crosshair ruler pills — `"px"`, `"cm"`, `"mm"`, `"in"` or `"rem"` — or pass an ordered array such as `["px", "cm"]` to show several units in the same pill, separated by `·`. Physical units use the CSS reference pixel (`1in = 96px`), so they match design tools rather than the screen's physical size; `"rem"` follows the document root font size. The lines still track the pointer in CSS pixels. Pixel readouts now include the unit suffix (`300px`).
 - New **`crosshairLineColor`** and **`crosshairTextColor`** options override the ruler colors with any CSS color (hex, `rgb()`/`hsl()`/`hwb()`/`lab()`/`lch()`/`oklab()`/`oklch()`/`color()`, or a named color). `crosshairLineColor` paints both the guide lines and the coordinate pill backgrounds; `crosshairTextColor` sets the pill text. When omitted, the current `theme` palette is used, so dark and light overlays keep their built-in contrast. Values are validated in both the plugin and the browser runtime; invalid colors are ignored and omitted from the injected prelude.
 - The units are exposed as `data-ttc-crosshair-unit` (space-separated) on the overlay host and as `TabToComponentsCrosshairUnit` / `TabToComponentsCrosshairUnitSelection` in the public types. The option is omitted from the injected prelude for the default (`["px"]`), so apps that do not set it keep the same payload. Pills now clamp using their measured width, keeping longer multi-unit labels fully visible at the viewport edge.
-- New **`crosshairPointKey`** option (`"z"` by default): while the crosshair ruler is visible, press the key to drop a measurement point at the pointer. Accepts one letter or digit, case-insensitive, and is omitted from the injected prelude when it is the default. Each new point is measured only against the previous point, so three points produce two labelled segments rather than a diagonal shortcut; every segment label uses all configured `crosshairUnit` units. Releasing the `keyboard` modifier or blurring the window removes all points, segments and labels. Auto-repeat does not add duplicate points. The runtime also matches the physical key code, so macOS <kbd>Option</kbd>+<kbd>Z</kbd> (where `event.key` becomes `Ω`) still places a point.
+- New **`crosshairPointKey`** option (`"z"` by default): while the crosshair ruler is visible, press the key to drop a measurement point at the pointer. Accepts one letter or digit, case-insensitive, and is omitted from the injected prelude when it is the default. Each new point is measured only against the previous point, so three points produce two labelled segments rather than a diagonal shortcut; every segment label uses all configured `crosshairUnit` units. Releasing the `keyboard` modifier, scrolling the page or blurring the window removes all points, segments and labels. Auto-repeat does not add duplicate points, and pressing the point key again without moving the pointer is ignored. The runtime also matches the physical key code, so macOS <kbd>Option</kbd>+<kbd>Z</kbd> (where `event.key` becomes `Ω`) still places a point.
 - The ruler now obeys the **`keyboard`** modifier instead of always following the pointer: press the configured key(s) (default <kbd>Alt</kbd>) to reveal it at the current pointer position, and release them to hide it. The existing window-blur, pointer-leave and open-picker hides are unchanged. Docs describe the new behavior.
 - Tests: crosshair readout coverage for cm/mm/in/rem and multi-unit pills, point placement/adjacent-segment measurement/clearing, physical-key matching, modifier press/release visibility, unit and point-key normalization in the browser config, and plugin payload coverage.
 
@@ -22,19 +32,12 @@ This project follows [Semantic Versioning](https://semver.org/).
 - New **`settingsSource`** option (`"plugin"` by default, or `"extension"`) chooses which configuration wins when the page also runs the plugin. With `"plugin"` the extension mirrors the plugin's `keyboard`, `open`, `clickActions`, `menu` and `theme` and stays idle while the plugin's overlay is up (or renders its own overlay with those options when the plugin uses `overlay: false`); with `"extension"` it takes over, hides the plugin's overlay and uses the stored extension settings. The choice lives on the extension's options page (**Vite plugin → When both are installed**), deliberately not in the toolbar popup. This replaces the `showWhenVitePluginActive` takeover boolean, which is migrated (`true` → `"extension"`) on load.
 - The extension's source-action and component-chain pickers render the same per-row line icons as the plugin's menus (an arrow leaving a window for **Open in IDE**, page/folder/drive/pin icons for the copy actions, and a stacked box for chain rows), ported from the plugin's `src/client/icons.ts`.
 - The toolbar popup no longer shows its dismissible **Tip** box; the same guidance (hover preview, left-click picker, modifier + right-click chain, loopback-only) now lives in the options page's **Quick start** guide.
-- Tests: new `test/plugin-editor.test.ts`, `test/plugin-config.test.ts` and `test/ui/icons.test.ts`, protocol coverage for the editor messages and plugin options, and install tests for hiding the action (18 files, 227 tests).
+- The extension's crosshair support mirrors the plugin's: with `settingsSource: "plugin"` it renders `crosshair`, `crosshairUnit`, `crosshairLineColor`, `crosshairTextColor` and `crosshairPointKey` in its own page overlay, modifier-gated with the same units, colors and measurement points (points clear on modifier release, scroll or window blur), and its options page exposes matching settings when it uses stored settings.
+- Tests: new `test/plugin-editor.test.ts`, `test/plugin-config.test.ts` and `test/ui/icons.test.ts`, protocol coverage for the editor messages and plugin options, and install tests for hiding the action (18 files, 233 tests).
 
-## 0.6.0 - 2026-11-04
+### Packaging
 
-Feature release: the optional pointer **crosshair ruler**. Defaults, existing options and output formats are unchanged; `crosshair` is additive and off by default.
-
-### Crosshair ruler
-
-- New **`crosshair`** option (`false` by default): draws an axis ruler that follows the pointer, with a vertical line and a top pill showing the viewport `x`, and a horizontal line with a left pill showing the `y`. Values are `false`, `"both"`, `"x"`, `"y"`, and `true` as an alias for `"both"`.
-- The ruler lives inside the existing `[data-ttc-ui]` shadow root, uses the light/dark palette tokens (`--ttc-crosshair-line`, `--ttc-crosshair-tag-bg`, `--ttc-crosshair-tag-text`) and is exposed as `data-ttc-crosshair="<mode>"` on the host when enabled. It stays `pointer-events: none`, so it never intercepts the app.
-- It hides while a picker is open, when the pointer leaves the window, and on window blur, and it works without holding the modifier key. When disabled, no extra DOM is created, so the injected client prelude stays byte-identical for apps that do not opt in.
-- Adds `TabToComponentsCrosshairMode` (`"both" | "x" | "y"`) to the public types and `CrosshairMode` to the browser config exports.
-- Tests: new `test/client/crosshair.test.ts` (10 tests) plus `crosshair` coverage in `test/client/config.test.ts` and `test/plugin-options.test.ts`; the unit suite is 22 files / 506 tests.
+- The published tarball is 23 files / 220.4 KiB. The browser client is 38,802 B (12,495 B gzip), inside the budgets enforced by `pnpm verify:package` (225 KiB packed, 40 KiB client).
 
 ## 0.5.0 - 2026-10-28
 

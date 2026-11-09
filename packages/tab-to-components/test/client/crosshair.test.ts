@@ -498,6 +498,31 @@ describe("crosshair ruler", () => {
     expect(shadow().querySelectorAll(".ttc-crosshair-point")).toHaveLength(0);
   });
 
+  it("clears every point and hides the ruler when the page scrolls", () => {
+    configure({ crosshair: "both" });
+    moveAlt(300, 200);
+    pressPointKey();
+    moveAlt(400, 200);
+    pressPointKey();
+    expect(shadow().querySelectorAll(".ttc-crosshair-point")).toHaveLength(2);
+
+    window.dispatchEvent(new Event("scroll"));
+
+    expect(shadow().querySelectorAll(".ttc-crosshair-point")).toHaveLength(0);
+    expect(shadow().querySelectorAll(".ttc-crosshair-segment")).toHaveLength(0);
+    expect(node(".ttc-crosshair").style.display).toBe("none");
+  });
+
+  it("ignores a repeated point press without moving the pointer", () => {
+    configure({ crosshair: "both" });
+    moveAlt(300, 200);
+    pressPointKey();
+    pressPointKey();
+
+    expect(shadow().querySelectorAll(".ttc-crosshair-point")).toHaveLength(1);
+    expect(shadow().querySelectorAll(".ttc-crosshair-segment")).toHaveLength(0);
+  });
+
   it("adds no points when the crosshair option is off", () => {
     configure();
     mouse("mousemove", document.body, { clientX: 300, clientY: 200 });
